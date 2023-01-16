@@ -43,6 +43,8 @@
 #include <fstream>
 #include <cmath>
 
+#include <deal.II/base/timer.h>
+
 // The last step is as in previous programs:
 namespace Step10
 {
@@ -179,10 +181,10 @@ namespace Step10
     // not use Gauss quadrature in order to get the exact value of the
     // integral as done often in finite element computations, but could as
     // well have used any quadrature formula of like order instead.
-    const QGauss<dim> quadrature(4);
+    const QGauss<dim> quadrature(2);
 
     // Now start by looping over polynomial mapping degrees=1..4:
-    for (unsigned int degree = 1; degree < 5; ++degree)
+    for (unsigned int degree = 1; degree < 2; ++degree)
       {
         std::cout << "Degree = " << degree << std::endl;
 
@@ -191,7 +193,7 @@ namespace Step10
         Triangulation<dim> triangulation;
         GridGenerator::hyper_ball(triangulation);
 
-        const MappingQ<dim> mapping(degree);
+        //const MappingQ<dim> mapping(degree);
 
         // We now create a finite element. Unlike the rest of the example
         // programs, we do not actually need to do any computations with shape
@@ -221,7 +223,8 @@ namespace Step10
         // computation of the mapping from unit to real cell. In previous
         // examples, this argument was omitted, resulting in the implicit use
         // of an object of type MappingQ1.
-        FEValues<dim> fe_values(mapping, fe, quadrature, update_JxW_values);
+        FEValues<dim> fe_values(//mapping,
+                                fe, quadrature, update_JxW_values);
 
         // We employ an object of the ConvergenceTable class to store all
         // important data like the approximated values for $\pi$ and the error
@@ -229,9 +232,11 @@ namespace Step10
         // provided by the ConvergenceTable class to compute convergence rates
         // of the approximations to $\pi$.
         ConvergenceTable table;
+        int averaging=1
+          ;
 
         // Now we loop over several refinement steps of the triangulation.
-        for (unsigned int refinement = 0; refinement < 6;
+        for (unsigned int refinement = 0; refinement < 8;
              ++refinement, triangulation.refine_global(1))
           {
             // In this loop we first add the number of active cells of the
@@ -251,35 +256,41 @@ namespace Step10
             // for each cell, and add up all the `JxW` values for this cell to
             // `area`...
             double area = 0;
-            for (const auto &cell : dof_handler.active_cell_iterators())
-              {
-                fe_values.reinit(cell);
-                for (unsigned int i = 0; i < fe_values.n_quadrature_points; ++i)
-                  area += fe_values.JxW(i);
-              }
-
+            double constr_time=0.0;
+            double eval_time=0.0;
+            for (int k=0; k<averaging; k++)
+            {
+              area=0.0;
+              for (const auto &cell : dof_handler.active_cell_iterators())
+                {
+                  Timer timer2;
+                  fe_values.reinit(cell);
+                  timer2.stop();
+                  constr_time += (1.0/averaging)*timer2.cpu_time();
+                  Timer timer;
+                  for (unsigned int i = 0; i < fe_values.n_quadrature_points;
+                       ++i)
+                    area += fe_values.JxW(i);
+                  timer.stop();
+                  eval_time += (1.0/averaging)*timer.cpu_time();
+                }
+            }
+            //timer.stop();
             // ...and store the resulting area values and the errors in the
             // table:
-            table.add_value("eval.pi", area);
+
             table.add_value("error", std::fabs(area - numbers::PI));
+            table.add_value("CPU_construction", constr_time);
+            table.add_value("CPU_evaluation", eval_time);
+            table.evaluate_all_convergence_rates(
+              ConvergenceTable::reduction_rate_log2);
+            table.set_scientific("error", true);
+            table.set_scientific("CPU_evaluation", true);
+            table.set_scientific("CPU_construction", true);
+            table.write_text(std::cout);
+            std::cout << std::endl;
+
           }
-
-        // We want to compute the convergence rates of the `error`
-        // column. Therefore we need to omit the other columns from the
-        // convergence rate evaluation before calling
-        // `evaluate_all_convergence_rates`
-        table.omit_column_from_convergence_rate_evaluation("cells");
-        table.omit_column_from_convergence_rate_evaluation("eval.pi");
-        table.evaluate_all_convergence_rates(
-          ConvergenceTable::reduction_rate_log2);
-
-        // Finally we set the precision and scientific mode for output of some
-        // of the quantities...
-        table.set_precision("eval.pi", 16);
-        table.set_scientific("error", true);
-
-        // ...and write the whole table to std::cout.
-        table.write_text(std::cout);
 
         std::cout << std::endl;
       }
@@ -299,18 +310,18 @@ namespace Step10
     // We take the same order of quadrature but this time a `dim-1`
     // dimensional quadrature as we will integrate over (boundary) lines
     // rather than over cells.
-    const QGauss<dim - 1> quadrature(4);
+    const QGauss<dim - 1> quadrature(2);
 
     // We loop over all degrees, create the triangulation, the boundary, the
     // mapping, the dummy finite element and the DoFHandler object as seen
     // before.
-    for (unsigned int degree = 1; degree < 5; ++degree)
+    for (unsigned int degree = 1; degree < 2; ++degree)
       {
         std::cout << "Degree = " << degree << std::endl;
         Triangulation<dim> triangulation;
         GridGenerator::hyper_ball(triangulation);
 
-        const MappingQ<dim>   mapping(degree);
+        //const MappingQ<dim>   mapping(degree);
         const FE_Nothing<dim> fe;
 
         DoFHandler<dim> dof_handler(triangulation);
@@ -318,52 +329,68 @@ namespace Step10
         // Then we create a FEFaceValues object instead of a FEValues object
         // as in the previous function. Again, we pass a mapping as first
         // argument.
-        FEFaceValues<dim> fe_face_values(mapping,
+        FEFaceValues<dim> fe_face_values(//mapping,
                                          fe,
                                          quadrature,
                                          update_JxW_values);
         ConvergenceTable  table;
-
-        for (unsigned int refinement = 0; refinement < 6;
+        int averaging=1;
+        for (unsigned int refinement = 0; refinement < 8;
              ++refinement, triangulation.refine_global(1))
           {
-            table.add_value("cells", triangulation.n_active_cells());
+            double perimeter   = 0;
+            double constr_time = 0.0;
+            double eval_time   = 0.0;
+            int    bc_edges    = 0;
+
+            // table.add_value("cells", triangulation.n_active_cells());
 
             dof_handler.distribute_dofs(fe);
 
+
+            for(int k=0; k<averaging; k++)
+              {
+                perimeter=0.0;
+                bc_edges=0;
             // Now we run over all cells and over all faces of each cell. Only
             // the contributions of the `JxW` values on boundary faces are
             // added to the variable `perimeter`.
-            double perimeter = 0;
+
             for (const auto &cell : dof_handler.active_cell_iterators())
               for (const auto &face : cell->face_iterators())
                 if (face->at_boundary())
                   {
                     // We reinit the FEFaceValues object with the cell
                     // iterator and the number of the face.
+                    bc_edges++;
+                    Timer timer2;
                     fe_face_values.reinit(cell, face);
+                    timer2.stop();
+                    constr_time += (1.0/averaging)*timer2.cpu_time();
+                    Timer timer;
                     for (unsigned int i = 0;
                          i < fe_face_values.n_quadrature_points;
                          ++i)
                       perimeter += fe_face_values.JxW(i);
+                    timer.stop();
+                    eval_time += (1.0/averaging)*timer.cpu_time();
                   }
-            // Then store the evaluated values in the table...
-            table.add_value("eval.pi", static_cast<double>(perimeter / 2.0));
-            table.add_value("error", std::fabs(perimeter / 2.0 - numbers::PI));
           }
-
-        // ...and end this function as we did in the previous one:
-        table.omit_column_from_convergence_rate_evaluation("cells");
-        table.omit_column_from_convergence_rate_evaluation("eval.pi");
-        table.evaluate_all_convergence_rates(
-          ConvergenceTable::reduction_rate_log2);
-
-        table.set_precision("eval.pi", 16);
-        table.set_scientific("error", true);
-
-        table.write_text(std::cout);
-
-        std::cout << std::endl;
+            //timer.stop();
+            // Then store the evaluated values in the table...
+            table.add_value("cut_cells", bc_edges);
+            table.add_value("error", std::fabs(perimeter / 2.0 - numbers::PI));
+            table.add_value("CPU_construction", constr_time);
+            table.add_value("CPU_evaluation", eval_time);
+            table.set_scientific("error", true);
+            table.set_scientific("CPU_construction", true);
+            table.set_scientific("CPU_evaluation", true);
+            table.omit_column_from_convergence_rate_evaluation("cells");
+            table.evaluate_all_convergence_rates(
+              ConvergenceTable::reduction_rate_log2);
+            table.write_text(std::cout);
+            std::cout << std::endl;
+          }
       }
   }
 } // namespace Step10
@@ -380,7 +407,7 @@ int main()
 
       const unsigned int dim = 2;
 
-      Step10::gnuplot_output<dim>();
+      //Step10::gnuplot_output<dim>();
 
       Step10::compute_pi_by_area<dim>();
       Step10::compute_pi_by_perimeter<dim>();
