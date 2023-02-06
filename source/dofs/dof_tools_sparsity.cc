@@ -820,8 +820,8 @@ namespace DoFTools
                   // Loop over all interior neighbors
                   for (const unsigned int face_n : cell->face_indices())
                     {
-                      const typename DoFHandler<dim, spacedim>::face_iterator
-                        cell_face = cell->face(face_n);
+//                      const typename DoFHandler<dim, spacedim>::face_iterator
+//                        cell_face = cell->face(face_n);
 
                       const bool periodic_neighbor =
                         cell->has_periodic_neighbor(face_n);
@@ -1060,9 +1060,9 @@ namespace DoFTools
                   // Loop over interior faces
                   for (const unsigned int face : cell->face_indices())
                     {
-                      const typename dealii::DoFHandler<dim,
-                                                        spacedim>::face_iterator
-                        cell_face = cell->face(face);
+                      //const typename dealii::DoFHandler<dim,
+                       //                                 spacedim>::face_iterator
+                        //cell_face = cell->face(face);
 
                       const bool periodic_neighbor =
                         cell->has_periodic_neighbor(face);
@@ -1106,13 +1106,13 @@ namespace DoFTools
                           if (!face_has_flux_coupling(cell, face))
                             continue;
 
-                            dofs_on_other_cell.resize(
-                              neighbor->get_fe().n_dofs_per_cell());
-                            neighbor->get_dof_indices(dofs_on_other_cell);
-                            for (unsigned int i = 0;
-                                 i < cell->get_fe().n_dofs_per_cell();
-                                 ++i)
-                              {
+                          dofs_on_other_cell.resize(
+                            neighbor->get_fe().n_dofs_per_cell());
+                          neighbor->get_dof_indices(dofs_on_other_cell);
+                          for (unsigned int i = 0;
+                               i < cell->get_fe().n_dofs_per_cell();
+                               ++i)
+                            {
                                 const unsigned int ii =
                                   (cell->get_fe().is_primitive(i) ?
                                      cell->get_fe()
@@ -1138,9 +1138,9 @@ namespace DoFTools
                                            .get_nonzero_components(j)
                                            .first_selected_component());
 
-                                    Assert(
-                                      jj < neighbor->get_fe().n_components(),
-                                      ExcInternalError());
+                                    Assert(jj <
+                                             neighbor->get_fe().n_components(),
+                                           ExcInternalError());
 
                                     if ((flux_mask(ii, jj) == always) ||
                                         (flux_mask(ii, jj) == nonzero))
@@ -1158,7 +1158,7 @@ namespace DoFTools
                                           dofs_on_this_cell[i]);
                                       }
                                   }
-                              }
+                            }
                         }
                     }
                   sparsity.add_entries(make_array_view(cell_entries));
