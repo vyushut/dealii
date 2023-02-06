@@ -852,263 +852,139 @@ namespace DoFTools
                         }
                       else
                         {
-                          if (!face_has_flux_coupling(cell, face_n))
-                            continue;
-
                           typename DoFHandler<dim,
                                               spacedim>::level_cell_iterator
                             neighbor =
                               cell->neighbor_or_periodic_neighbor(face_n);
-                          // If the cells are on the same level (and both are
-                          // active, locally-owned cells) then only add to the
-                          // sparsity pattern if the current cell is 'greater'
-                          // in the total ordering.
-                          if (neighbor->level() == cell->level() &&
-                              neighbor->index() > cell->index() &&
-                              neighbor->is_active() &&
-                              neighbor->is_locally_owned())
+
+                          //only active neighbors need to be considered
+                          if (!neighbor->is_active())
                             continue;
-                          // If we are more refined then the neighbor, then we
-                          // will automatically find the active neighbor cell
-                          // when we call 'neighbor (face_n)' above. The
-                          // opposite is not true; if the neighbor is more
-                          // refined then the call 'neighbor (face_n)' will
-                          // *not* return an active cell. Hence, only add things
-                          // to the sparsity pattern if (when the levels are
-                          // different) the neighbor is coarser than the current
-                          // cell.
-                          //
-                          // Like above, do not use this optimization if the
-                          // neighbor is not locally owned.
-                          if (neighbor->level() != cell->level() &&
-                              ((!periodic_neighbor &&
-                                !cell->neighbor_is_coarser(face_n)) ||
-                               (periodic_neighbor &&
-                                !cell->periodic_neighbor_is_coarser(face_n))) &&
-                              neighbor->is_locally_owned())
-                            continue; // (the neighbor is finer)
+
+                          //1D case is treated separately because faces are 0D points
+                          //and neighbor_is_coarser() never returns true in 1D
+                          //Luckily, the level/index information is enough to visit each face exactly once
+                          //because any mesh refinement is isotropic in 1D
+                          if ((dim==1)
+                              && (neighbor->level() == cell->level())//neighbor_is_coarser() wouldn't work here
+                              && (neighbor->index() > cell->index()))//artificial way to visit once the common face
+                            continue;
+                          //"neighbor is finer" may only happens in 1D with OD faces
+                          if ((dim==1)
+                              && (neighbor->level() > cell->level()))//artificial way to visit once the common face
+                            continue;
+
+                          //If the common face is not a regular face (not a subface) of the neighbor
+                          //proceed to the accumulation of sparsity pattern because this is the only time this face is visited
+                          //otherwise use an artificial way to visit this face once
+                          if ((dim!=1)
+                              &&
+                              (
+                                (!periodic_neighbor && !cell->neighbor_is_coarser(face_n))//you CAN'T go back from neighbour to cell
+                                ||
+                                ( periodic_neighbor && !cell->periodic_neighbor_is_coarser(face_n))//you CAN'T go back from neighbour to cell
+                                  )
+                              && (neighbor->index() > cell->index()))//if the index comparison false then will be true when the next time the common face is visited
+                            continue;
+
+                          if (!face_has_flux_coupling(cell, face_n))
+                            continue;
 
                           const unsigned int neighbor_face_n =
                             periodic_neighbor ?
                               cell->periodic_neighbor_face_no(face_n) :
                               cell->neighbor_face_no(face_n);
 
-
-                          // In 1D, go straight to the cell behind this
-                          // particular cell's most terminal cell. This makes us
-                          // skip the if (neighbor->has_children()) section
-                          // below. We need to do this since we otherwise
-                          // iterate over the children of the face, which are
-                          // always 0 in 1D.
-                          if (dim == 1)
-                            while (neighbor->has_children())
-                              neighbor = neighbor->child(face_n == 0 ? 1 : 0);
-
-                          if (neighbor->has_children())
-                            {
-                              for (unsigned int sub_nr = 0;
-                                   sub_nr != cell_face->n_children();
-                                   ++sub_nr)
-                                {
-                                  const typename DoFHandler<dim, spacedim>::
-                                    level_cell_iterator sub_neighbor =
-                                      periodic_neighbor ?
-                                        cell
-                                          ->periodic_neighbor_child_on_subface(
-                                            face_n, sub_nr) :
-                                        cell->neighbor_child_on_subface(face_n,
-                                                                        sub_nr);
-
-                                  sub_neighbor->get_dof_indices(
-                                    dofs_on_other_cell);
-                                  for (unsigned int i = 0;
-                                       i < fe.n_dofs_per_cell();
-                                       ++i)
-                                    {
-                                      const bool i_non_zero_i =
-                                        support_on_face(i, face_n);
-                                      const bool i_non_zero_e =
-                                        support_on_face(i, neighbor_face_n);
-                                      for (unsigned int j = 0;
-                                           j < fe.n_dofs_per_cell();
-                                           ++j)
-                                        {
-                                          const bool j_non_zero_i =
-                                            support_on_face(j, face_n);
-                                          const bool j_non_zero_e =
-                                            support_on_face(j, neighbor_face_n);
-
-                                          if (flux_dof_mask(i, j) == always)
-                                            {
-                                              cell_entries.emplace_back(
-                                                dofs_on_this_cell[i],
-                                                dofs_on_other_cell[j]);
-                                              cell_entries.emplace_back(
-                                                dofs_on_other_cell[i],
-                                                dofs_on_this_cell[j]);
-                                              cell_entries.emplace_back(
-                                                dofs_on_this_cell[i],
-                                                dofs_on_this_cell[j]);
-                                              cell_entries.emplace_back(
-                                                dofs_on_other_cell[i],
-                                                dofs_on_other_cell[j]);
-                                            }
-                                          else if (flux_dof_mask(i, j) ==
-                                                   nonzero)
-                                            {
-                                              if (i_non_zero_i && j_non_zero_e)
-                                                cell_entries.emplace_back(
-                                                  dofs_on_this_cell[i],
-                                                  dofs_on_other_cell[j]);
-                                              if (i_non_zero_e && j_non_zero_i)
-                                                cell_entries.emplace_back(
-                                                  dofs_on_other_cell[i],
-                                                  dofs_on_this_cell[j]);
-                                              if (i_non_zero_i && j_non_zero_i)
-                                                cell_entries.emplace_back(
-                                                  dofs_on_this_cell[i],
-                                                  dofs_on_this_cell[j]);
-                                              if (i_non_zero_e && j_non_zero_e)
-                                                cell_entries.emplace_back(
-                                                  dofs_on_other_cell[i],
-                                                  dofs_on_other_cell[j]);
-                                            }
-
-                                          if (flux_dof_mask(j, i) == always)
-                                            {
-                                              cell_entries.emplace_back(
-                                                dofs_on_this_cell[j],
-                                                dofs_on_other_cell[i]);
-                                              cell_entries.emplace_back(
-                                                dofs_on_other_cell[j],
-                                                dofs_on_this_cell[i]);
-                                              cell_entries.emplace_back(
-                                                dofs_on_this_cell[j],
-                                                dofs_on_this_cell[i]);
-                                              cell_entries.emplace_back(
-                                                dofs_on_other_cell[j],
-                                                dofs_on_other_cell[i]);
-                                            }
-                                          else if (flux_dof_mask(j, i) ==
-                                                   nonzero)
-                                            {
-                                              if (j_non_zero_i && i_non_zero_e)
-                                                cell_entries.emplace_back(
-                                                  dofs_on_this_cell[j],
-                                                  dofs_on_other_cell[i]);
-                                              if (j_non_zero_e && i_non_zero_i)
-                                                cell_entries.emplace_back(
-                                                  dofs_on_other_cell[j],
-                                                  dofs_on_this_cell[i]);
-                                              if (j_non_zero_i && i_non_zero_i)
-                                                cell_entries.emplace_back(
-                                                  dofs_on_this_cell[j],
-                                                  dofs_on_this_cell[i]);
-                                              if (j_non_zero_e && i_non_zero_e)
-                                                cell_entries.emplace_back(
-                                                  dofs_on_other_cell[j],
-                                                  dofs_on_other_cell[i]);
-                                            }
-                                        }
-                                    }
-                                }
-                              sparsity.add_entries(
-                                make_array_view(cell_entries));
-                              cell_entries.clear();
-                            }
-                          else
-                            {
-                              neighbor->get_dof_indices(dofs_on_other_cell);
-                              for (unsigned int i = 0; i < fe.n_dofs_per_cell();
-                                   ++i)
-                                {
-                                  const bool i_non_zero_i =
-                                    support_on_face(i, face_n);
-                                  const bool i_non_zero_e =
-                                    support_on_face(i, neighbor_face_n);
-                                  for (unsigned int j = 0;
-                                       j < fe.n_dofs_per_cell();
-                                       ++j)
-                                    {
-                                      const bool j_non_zero_i =
-                                        support_on_face(j, face_n);
-                                      const bool j_non_zero_e =
-                                        support_on_face(j, neighbor_face_n);
-                                      if (flux_dof_mask(i, j) == always)
-                                        {
+                            neighbor->get_dof_indices(dofs_on_other_cell);
+                            for (unsigned int i = 0; i < fe.n_dofs_per_cell();
+                                 ++i)
+                              {
+                                const bool i_non_zero_i =
+                                  support_on_face(i, face_n);
+                                const bool i_non_zero_e =
+                                  support_on_face(i, neighbor_face_n);
+                                for (unsigned int j = 0;
+                                     j < fe.n_dofs_per_cell();
+                                     ++j)
+                                  {
+                                    const bool j_non_zero_i =
+                                      support_on_face(j, face_n);
+                                    const bool j_non_zero_e =
+                                      support_on_face(j, neighbor_face_n);
+                                    if (flux_dof_mask(i, j) == always)
+                                      {
+                                        cell_entries.emplace_back(
+                                          dofs_on_this_cell[i],
+                                          dofs_on_other_cell[j]);
+                                        cell_entries.emplace_back(
+                                          dofs_on_other_cell[i],
+                                          dofs_on_this_cell[j]);
+                                        cell_entries.emplace_back(
+                                          dofs_on_this_cell[i],
+                                          dofs_on_this_cell[j]);
+                                        cell_entries.emplace_back(
+                                          dofs_on_other_cell[i],
+                                          dofs_on_other_cell[j]);
+                                      }
+                                    if (flux_dof_mask(i, j) == nonzero)
+                                      {
+                                        if (i_non_zero_i && j_non_zero_e)
                                           cell_entries.emplace_back(
                                             dofs_on_this_cell[i],
                                             dofs_on_other_cell[j]);
+                                        if (i_non_zero_e && j_non_zero_i)
                                           cell_entries.emplace_back(
                                             dofs_on_other_cell[i],
                                             dofs_on_this_cell[j]);
+                                        if (i_non_zero_i && j_non_zero_i)
                                           cell_entries.emplace_back(
                                             dofs_on_this_cell[i],
                                             dofs_on_this_cell[j]);
+                                        if (i_non_zero_e && j_non_zero_e)
                                           cell_entries.emplace_back(
                                             dofs_on_other_cell[i],
                                             dofs_on_other_cell[j]);
-                                        }
-                                      if (flux_dof_mask(i, j) == nonzero)
-                                        {
-                                          if (i_non_zero_i && j_non_zero_e)
-                                            cell_entries.emplace_back(
-                                              dofs_on_this_cell[i],
-                                              dofs_on_other_cell[j]);
-                                          if (i_non_zero_e && j_non_zero_i)
-                                            cell_entries.emplace_back(
-                                              dofs_on_other_cell[i],
-                                              dofs_on_this_cell[j]);
-                                          if (i_non_zero_i && j_non_zero_i)
-                                            cell_entries.emplace_back(
-                                              dofs_on_this_cell[i],
-                                              dofs_on_this_cell[j]);
-                                          if (i_non_zero_e && j_non_zero_e)
-                                            cell_entries.emplace_back(
-                                              dofs_on_other_cell[i],
-                                              dofs_on_other_cell[j]);
-                                        }
+                                      }
 
-                                      if (flux_dof_mask(j, i) == always)
-                                        {
+                                    if (flux_dof_mask(j, i) == always)
+                                      {
+                                        cell_entries.emplace_back(
+                                          dofs_on_this_cell[j],
+                                          dofs_on_other_cell[i]);
+                                        cell_entries.emplace_back(
+                                          dofs_on_other_cell[j],
+                                          dofs_on_this_cell[i]);
+                                        cell_entries.emplace_back(
+                                          dofs_on_this_cell[j],
+                                          dofs_on_this_cell[i]);
+                                        cell_entries.emplace_back(
+                                          dofs_on_other_cell[j],
+                                          dofs_on_other_cell[i]);
+                                      }
+                                    if (flux_dof_mask(j, i) == nonzero)
+                                      {
+                                        if (j_non_zero_i && i_non_zero_e)
                                           cell_entries.emplace_back(
                                             dofs_on_this_cell[j],
                                             dofs_on_other_cell[i]);
+                                        if (j_non_zero_e && i_non_zero_i)
                                           cell_entries.emplace_back(
                                             dofs_on_other_cell[j],
                                             dofs_on_this_cell[i]);
+                                        if (j_non_zero_i && i_non_zero_i)
                                           cell_entries.emplace_back(
                                             dofs_on_this_cell[j],
                                             dofs_on_this_cell[i]);
+                                        if (j_non_zero_e && i_non_zero_e)
                                           cell_entries.emplace_back(
                                             dofs_on_other_cell[j],
                                             dofs_on_other_cell[i]);
-                                        }
-                                      if (flux_dof_mask(j, i) == nonzero)
-                                        {
-                                          if (j_non_zero_i && i_non_zero_e)
-                                            cell_entries.emplace_back(
-                                              dofs_on_this_cell[j],
-                                              dofs_on_other_cell[i]);
-                                          if (j_non_zero_e && i_non_zero_i)
-                                            cell_entries.emplace_back(
-                                              dofs_on_other_cell[j],
-                                              dofs_on_this_cell[i]);
-                                          if (j_non_zero_i && i_non_zero_i)
-                                            cell_entries.emplace_back(
-                                              dofs_on_this_cell[j],
-                                              dofs_on_this_cell[i]);
-                                          if (j_non_zero_e && i_non_zero_e)
-                                            cell_entries.emplace_back(
-                                              dofs_on_other_cell[j],
-                                              dofs_on_other_cell[i]);
-                                        }
-                                    }
-                                }
-                              sparsity.add_entries(
-                                make_array_view(cell_entries));
-                              cell_entries.clear();
-                            }
+                                      }
+                                  }
+                              }
+                            sparsity.add_entries(
+                              make_array_view(cell_entries));
+                            cell_entries.clear();
                         }
                     }
                 }
@@ -1197,178 +1073,92 @@ namespace DoFTools
                             level_cell_iterator neighbor =
                               cell->neighbor_or_periodic_neighbor(face);
 
+                          //only active neighbors need to be considered
+                          if (!neighbor->is_active())
+                            continue;
+
+                          //1D case is treated separately because faces are 0D points
+                          //and neighbor_is_coarser() never returns true in 1D
+                          //Luckily, the level/index information is enough to visit each face exactly once
+                          //because any mesh refinement is isotropic in 1D
+                          if ((dim==1)
+                              && (neighbor->level() == cell->level())//neighbor_is_coarser() wouldn't work here
+                              && (neighbor->index() > cell->index()))//artificial way to visit once the common face
+                            continue;
+                          //"neighbor is finer" may only happens in 1D with OD faces
+                          if ((dim==1)
+                              && (neighbor->level() > cell->level()))//artificial way to visit once the common face
+                            continue;
+
+                          //If the common face is not a regular face (not a subface) of the neighbor
+                          //proceed to the accumulation of sparsity pattern because this is the only time this face is visited
+                          //otherwise use an artificial way to visit this face once
+                          if ((dim!=1)
+                              &&
+                              (
+                                (!periodic_neighbor && !cell->neighbor_is_coarser(face))//you CAN go back from neighbour to cell
+                                ||
+                                ( periodic_neighbor && !cell->periodic_neighbor_is_coarser(face))//you CAN go back from periodic neighbour to cell
+                              )
+                              && (neighbor->index() > cell->index()))//if the index comparison returns false then it will be true when the next time the common face is visited
+                            continue;
+
                           if (!face_has_flux_coupling(cell, face))
                             continue;
 
-                          // Like the non-hp-case: If the cells are on the same
-                          // level (and both are active, locally-owned cells)
-                          // then only add to the sparsity pattern if the
-                          // current cell is 'greater' in the total ordering.
-                          if (neighbor->level() == cell->level() &&
-                              neighbor->index() > cell->index() &&
-                              neighbor->is_active() &&
-                              neighbor->is_locally_owned())
-                            continue;
-                          // Again, like the non-hp-case: If we are more refined
-                          // then the neighbor, then we will automatically find
-                          // the active neighbor cell when we call 'neighbor
-                          // (face)' above. The opposite is not true; if the
-                          // neighbor is more refined then the call 'neighbor
-                          // (face)' will *not* return an active cell. Hence,
-                          // only add things to the sparsity pattern if (when
-                          // the levels are different) the neighbor is coarser
-                          // than the current cell.
-                          //
-                          // Like above, do not use this optimization if the
-                          // neighbor is not locally owned.
-                          if (neighbor->level() != cell->level() &&
-                              ((!periodic_neighbor &&
-                                !cell->neighbor_is_coarser(face)) ||
-                               (periodic_neighbor &&
-                                !cell->periodic_neighbor_is_coarser(face))) &&
-                              neighbor->is_locally_owned())
-                            continue; // (the neighbor is finer)
+                            dofs_on_other_cell.resize(
+                              neighbor->get_fe().n_dofs_per_cell());
+                            neighbor->get_dof_indices(dofs_on_other_cell);
+                            for (unsigned int i = 0;
+                                 i < cell->get_fe().n_dofs_per_cell();
+                                 ++i)
+                              {
+                                const unsigned int ii =
+                                  (cell->get_fe().is_primitive(i) ?
+                                     cell->get_fe()
+                                       .system_to_component_index(i)
+                                       .first :
+                                     cell->get_fe()
+                                       .get_nonzero_components(i)
+                                       .first_selected_component());
 
-                          // In 1D, go straight to the cell behind this
-                          // particular cell's most terminal cell. This makes us
-                          // skip the if (neighbor->has_children()) section
-                          // below. We need to do this since we otherwise
-                          // iterate over the children of the face, which are
-                          // always 0 in 1D.
-                          if (dim == 1)
-                            while (neighbor->has_children())
-                              neighbor = neighbor->child(face == 0 ? 1 : 0);
+                                Assert(ii < cell->get_fe().n_components(),
+                                       ExcInternalError());
 
-                          if (neighbor->has_children())
-                            {
-                              for (unsigned int sub_nr = 0;
-                                   sub_nr != cell_face->n_children();
-                                   ++sub_nr)
-                                {
-                                  const typename dealii::DoFHandler<dim,
-                                                                    spacedim>::
-                                    level_cell_iterator sub_neighbor =
-                                      periodic_neighbor ?
-                                        cell
-                                          ->periodic_neighbor_child_on_subface(
-                                            face, sub_nr) :
-                                        cell->neighbor_child_on_subface(face,
-                                                                        sub_nr);
+                                for (unsigned int j = 0;
+                                     j < neighbor->get_fe().n_dofs_per_cell();
+                                     ++j)
+                                  {
+                                    const unsigned int jj =
+                                      (neighbor->get_fe().is_primitive(j) ?
+                                         neighbor->get_fe()
+                                           .system_to_component_index(j)
+                                           .first :
+                                         neighbor->get_fe()
+                                           .get_nonzero_components(j)
+                                           .first_selected_component());
 
-                                  dofs_on_other_cell.resize(
-                                    sub_neighbor->get_fe().n_dofs_per_cell());
-                                  sub_neighbor->get_dof_indices(
-                                    dofs_on_other_cell);
-                                  for (unsigned int i = 0;
-                                       i < cell->get_fe().n_dofs_per_cell();
-                                       ++i)
-                                    {
-                                      const unsigned int ii =
-                                        (cell->get_fe().is_primitive(i) ?
-                                           cell->get_fe()
-                                             .system_to_component_index(i)
-                                             .first :
-                                           cell->get_fe()
-                                             .get_nonzero_components(i)
-                                             .first_selected_component());
+                                    Assert(
+                                      jj < neighbor->get_fe().n_components(),
+                                      ExcInternalError());
 
-                                      Assert(ii < cell->get_fe().n_components(),
-                                             ExcInternalError());
+                                    if ((flux_mask(ii, jj) == always) ||
+                                        (flux_mask(ii, jj) == nonzero))
+                                      {
+                                        cell_entries.emplace_back(
+                                          dofs_on_this_cell[i],
+                                          dofs_on_other_cell[j]);
+                                      }
 
-                                      for (unsigned int j = 0;
-                                           j < sub_neighbor->get_fe()
-                                                 .n_dofs_per_cell();
-                                           ++j)
-                                        {
-                                          const unsigned int jj =
-                                            (sub_neighbor->get_fe()
-                                                 .is_primitive(j) ?
-                                               sub_neighbor->get_fe()
-                                                 .system_to_component_index(j)
-                                                 .first :
-                                               sub_neighbor->get_fe()
-                                                 .get_nonzero_components(j)
-                                                 .first_selected_component());
-
-                                          Assert(jj < sub_neighbor->get_fe()
-                                                        .n_components(),
-                                                 ExcInternalError());
-
-                                          if ((flux_mask(ii, jj) == always) ||
-                                              (flux_mask(ii, jj) == nonzero))
-                                            {
-                                              cell_entries.emplace_back(
-                                                dofs_on_this_cell[i],
-                                                dofs_on_other_cell[j]);
-                                            }
-
-                                          if ((flux_mask(jj, ii) == always) ||
-                                              (flux_mask(jj, ii) == nonzero))
-                                            {
-                                              cell_entries.emplace_back(
-                                                dofs_on_other_cell[j],
-                                                dofs_on_this_cell[i]);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                          else
-                            {
-                              dofs_on_other_cell.resize(
-                                neighbor->get_fe().n_dofs_per_cell());
-                              neighbor->get_dof_indices(dofs_on_other_cell);
-                              for (unsigned int i = 0;
-                                   i < cell->get_fe().n_dofs_per_cell();
-                                   ++i)
-                                {
-                                  const unsigned int ii =
-                                    (cell->get_fe().is_primitive(i) ?
-                                       cell->get_fe()
-                                         .system_to_component_index(i)
-                                         .first :
-                                       cell->get_fe()
-                                         .get_nonzero_components(i)
-                                         .first_selected_component());
-
-                                  Assert(ii < cell->get_fe().n_components(),
-                                         ExcInternalError());
-
-                                  for (unsigned int j = 0;
-                                       j < neighbor->get_fe().n_dofs_per_cell();
-                                       ++j)
-                                    {
-                                      const unsigned int jj =
-                                        (neighbor->get_fe().is_primitive(j) ?
-                                           neighbor->get_fe()
-                                             .system_to_component_index(j)
-                                             .first :
-                                           neighbor->get_fe()
-                                             .get_nonzero_components(j)
-                                             .first_selected_component());
-
-                                      Assert(
-                                        jj < neighbor->get_fe().n_components(),
-                                        ExcInternalError());
-
-                                      if ((flux_mask(ii, jj) == always) ||
-                                          (flux_mask(ii, jj) == nonzero))
-                                        {
-                                          cell_entries.emplace_back(
-                                            dofs_on_this_cell[i],
-                                            dofs_on_other_cell[j]);
-                                        }
-
-                                      if ((flux_mask(jj, ii) == always) ||
-                                          (flux_mask(jj, ii) == nonzero))
-                                        {
-                                          cell_entries.emplace_back(
-                                            dofs_on_other_cell[j],
-                                            dofs_on_this_cell[i]);
-                                        }
-                                    }
-                                }
-                            }
+                                    if ((flux_mask(jj, ii) == always) ||
+                                        (flux_mask(jj, ii) == nonzero))
+                                      {
+                                        cell_entries.emplace_back(
+                                          dofs_on_other_cell[j],
+                                          dofs_on_this_cell[i]);
+                                      }
+                                  }
+                              }
                         }
                     }
                   sparsity.add_entries(make_array_view(cell_entries));
