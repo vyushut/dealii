@@ -882,8 +882,8 @@ namespace DoFTools
                           // If the common face is not a regular face (not a
                           // subface) of the neighbor proceed to the
                           // accumulation of sparsity pattern because this is
-                          // the only time this face is visited otherwise use an
-                          // artificial way to visit this face once
+                          // the only time this face is visited; otherwise use
+                          // an artificial way to visit this face once
                           if ((dim != 1) &&
                               ((!periodic_neighbor &&
                                 !cell->neighbor_is_coarser(
@@ -895,10 +895,10 @@ namespace DoFTools
                                               // neighbour to cell
                                ) &&
                               (neighbor->index() >
-                               cell
-                                 ->index())) // if the index comparison false
-                                             // then will be true when the next
-                                             // time the common face is visited
+                               cell->index())) // if the index comparison
+                                               // returns false then it will be
+                                               // true when the next time the
+                                               // common face is visited
                             continue;
 
                           if (!face_has_flux_coupling(cell, face_n))
@@ -1106,19 +1106,19 @@ namespace DoFTools
                                                // the common face
                             continue;
 
-                          // If the common face is not a regular face (not a
+                          // If the common face is not a regular face (is a
                           // subface) of the neighbor proceed to the
                           // accumulation of sparsity pattern because this is
-                          // the only time this face is visited otherwise use an
-                          // artificial way to visit this face once
+                          // the only time this face is visited; otherwise use
+                          // an artificial way to visit this face once
                           if ((dim != 1) &&
                               ((!periodic_neighbor &&
                                 !cell->neighbor_is_coarser(
-                                  face)) // you CAN go back from neighbour to
+                                  face)) // you CAN'T go back from neighbour to
                                          // cell
                                || (periodic_neighbor &&
                                    !cell->periodic_neighbor_is_coarser(
-                                     face)) // you CAN go back from periodic
+                                     face)) // you CAN'T go back from periodic
                                             // neighbour to cell
                                ) &&
                               (neighbor->index() >
