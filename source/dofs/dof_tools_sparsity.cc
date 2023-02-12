@@ -856,38 +856,33 @@ namespace DoFTools
                                               spacedim>::level_cell_iterator
                             neighbor =
                               cell->neighbor_or_periodic_neighbor(face_n);
-                          // If the cells are on the same level (and both are
-                          // active, locally-owned cells) then only add to the
-                          // sparsity pattern if the current cell is 'greater'
-                          // in the total ordering.
-                          if (neighbor->level() == cell->level() &&
-                              neighbor->index() > cell->index() &&
-                              neighbor->is_active() &&
-                              neighbor->is_locally_owned())
+                          // only active neighbors need to be considered
+                          if (!neighbor->is_active())
                             continue;
-                          // If we are more refined then the neighbor, then we
-                          // will automatically find the active neighbor cell
-                          // when we call 'neighbor (face_n)' above. The
-                          // opposite is not true; if the neighbor is more
-                          // refined then the call 'neighbor (face_n)' will
-                          // *not* return an active cell. Hence, only add things
-                          // to the sparsity pattern if (when the levels are
-                          // different) the neighbor is coarser than the current
-                          // cell.
-                          //
-                          // Like above, do not use this optimization if the
-                          // neighbor is not locally owned.
-                          if (neighbor->level() != cell->level() &&
-                              ((!periodic_neighbor &&
-                                !cell->neighbor_is_coarser(face_n)) ||
-                               (periodic_neighbor &&
-                                !cell->periodic_neighbor_is_coarser(face_n))) &&
-                              neighbor->is_locally_owned())
-                            continue; // (the neighbor is finer)
+
+                          // If the common face is not a regular face (is a
+                          // subface) of the neighbor proceed to the accumulation
+                          // of sparsity pattern because this is the only time
+                          // this face is visited otherwise use an artificial way
+                          // to visit this face once
+                          bool this_face_isnt_regular_for_neighbor = ((!periodic_neighbor &&
+                                                                   !cell->neighbor_is_coarser(
+                                                                           face_n)) // you CAN go back from the neighbour
+                                                                  // to the current cell
+                                                                  ||
+                                                                  (periodic_neighbor &&
+                                                                   !cell->periodic_neighbor_is_coarser(face_n)))
+                          if ( this_face_isnt_regular_for_neighbor &&
+                              (neighbor->index() >
+                               cell->index())) // if the index (or any other
+                                               // objective scalar property)
+                                               // comparison returns false then
+                                               // will it be true when the next
+                                               // time the common face is visited
+                            continue;
 
                           if (!face_has_flux_coupling(cell, face_n))
                             continue;
-
 
                           const unsigned int neighbor_face_n =
                             periodic_neighbor ?
