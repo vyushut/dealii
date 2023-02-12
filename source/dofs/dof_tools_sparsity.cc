@@ -820,9 +820,6 @@ namespace DoFTools
                   // Loop over all interior neighbors
                   for (const unsigned int face_n : cell->face_indices())
                     {
-                      const typename DoFHandler<dim, spacedim>::face_iterator
-                        cell_face = cell->face(face_n);
-
                       const bool periodic_neighbor =
                         cell->has_periodic_neighbor(face_n);
 
@@ -900,211 +897,95 @@ namespace DoFTools
                             while (neighbor->has_children())
                               neighbor = neighbor->child(face_n == 0 ? 1 : 0);
 
-                          if (neighbor->has_children())
+
+                          neighbor->get_dof_indices(dofs_on_other_cell);
+                          for (unsigned int i = 0; i < fe.n_dofs_per_cell();
+                               ++i)
                             {
-                              for (unsigned int sub_nr = 0;
-                                   sub_nr != cell_face->n_children();
-                                   ++sub_nr)
+                              const bool i_non_zero_i =
+                                support_on_face(i, face_n);
+                              const bool i_non_zero_e =
+                                support_on_face(i, neighbor_face_n);
+                              for (unsigned int j = 0; j < fe.n_dofs_per_cell();
+                                   ++j)
                                 {
-                                  const typename DoFHandler<dim, spacedim>::
-                                    level_cell_iterator sub_neighbor =
-                                      periodic_neighbor ?
-                                        cell
-                                          ->periodic_neighbor_child_on_subface(
-                                            face_n, sub_nr) :
-                                        cell->neighbor_child_on_subface(face_n,
-                                                                        sub_nr);
-
-                                  sub_neighbor->get_dof_indices(
-                                    dofs_on_other_cell);
-                                  for (unsigned int i = 0;
-                                       i < fe.n_dofs_per_cell();
-                                       ++i)
+                                  const bool j_non_zero_i =
+                                    support_on_face(j, face_n);
+                                  const bool j_non_zero_e =
+                                    support_on_face(j, neighbor_face_n);
+                                  if (flux_dof_mask(i, j) == always)
                                     {
-                                      const bool i_non_zero_i =
-                                        support_on_face(i, face_n);
-                                      const bool i_non_zero_e =
-                                        support_on_face(i, neighbor_face_n);
-                                      for (unsigned int j = 0;
-                                           j < fe.n_dofs_per_cell();
-                                           ++j)
-                                        {
-                                          const bool j_non_zero_i =
-                                            support_on_face(j, face_n);
-                                          const bool j_non_zero_e =
-                                            support_on_face(j, neighbor_face_n);
+                                      cell_entries.emplace_back(
+                                        dofs_on_this_cell[i],
+                                        dofs_on_other_cell[j]);
+                                      cell_entries.emplace_back(
+                                        dofs_on_other_cell[i],
+                                        dofs_on_this_cell[j]);
+                                      cell_entries.emplace_back(
+                                        dofs_on_this_cell[i],
+                                        dofs_on_this_cell[j]);
+                                      cell_entries.emplace_back(
+                                        dofs_on_other_cell[i],
+                                        dofs_on_other_cell[j]);
+                                    }
+                                  if (flux_dof_mask(i, j) == nonzero)
+                                    {
+                                      if (i_non_zero_i && j_non_zero_e)
+                                        cell_entries.emplace_back(
+                                          dofs_on_this_cell[i],
+                                          dofs_on_other_cell[j]);
+                                      if (i_non_zero_e && j_non_zero_i)
+                                        cell_entries.emplace_back(
+                                          dofs_on_other_cell[i],
+                                          dofs_on_this_cell[j]);
+                                      if (i_non_zero_i && j_non_zero_i)
+                                        cell_entries.emplace_back(
+                                          dofs_on_this_cell[i],
+                                          dofs_on_this_cell[j]);
+                                      if (i_non_zero_e && j_non_zero_e)
+                                        cell_entries.emplace_back(
+                                          dofs_on_other_cell[i],
+                                          dofs_on_other_cell[j]);
+                                    }
 
-                                          if (flux_dof_mask(i, j) == always)
-                                            {
-                                              cell_entries.emplace_back(
-                                                dofs_on_this_cell[i],
-                                                dofs_on_other_cell[j]);
-                                              cell_entries.emplace_back(
-                                                dofs_on_other_cell[i],
-                                                dofs_on_this_cell[j]);
-                                              cell_entries.emplace_back(
-                                                dofs_on_this_cell[i],
-                                                dofs_on_this_cell[j]);
-                                              cell_entries.emplace_back(
-                                                dofs_on_other_cell[i],
-                                                dofs_on_other_cell[j]);
-                                            }
-                                          else if (flux_dof_mask(i, j) ==
-                                                   nonzero)
-                                            {
-                                              if (i_non_zero_i && j_non_zero_e)
-                                                cell_entries.emplace_back(
-                                                  dofs_on_this_cell[i],
-                                                  dofs_on_other_cell[j]);
-                                              if (i_non_zero_e && j_non_zero_i)
-                                                cell_entries.emplace_back(
-                                                  dofs_on_other_cell[i],
-                                                  dofs_on_this_cell[j]);
-                                              if (i_non_zero_i && j_non_zero_i)
-                                                cell_entries.emplace_back(
-                                                  dofs_on_this_cell[i],
-                                                  dofs_on_this_cell[j]);
-                                              if (i_non_zero_e && j_non_zero_e)
-                                                cell_entries.emplace_back(
-                                                  dofs_on_other_cell[i],
-                                                  dofs_on_other_cell[j]);
-                                            }
-
-                                          if (flux_dof_mask(j, i) == always)
-                                            {
-                                              cell_entries.emplace_back(
-                                                dofs_on_this_cell[j],
-                                                dofs_on_other_cell[i]);
-                                              cell_entries.emplace_back(
-                                                dofs_on_other_cell[j],
-                                                dofs_on_this_cell[i]);
-                                              cell_entries.emplace_back(
-                                                dofs_on_this_cell[j],
-                                                dofs_on_this_cell[i]);
-                                              cell_entries.emplace_back(
-                                                dofs_on_other_cell[j],
-                                                dofs_on_other_cell[i]);
-                                            }
-                                          else if (flux_dof_mask(j, i) ==
-                                                   nonzero)
-                                            {
-                                              if (j_non_zero_i && i_non_zero_e)
-                                                cell_entries.emplace_back(
-                                                  dofs_on_this_cell[j],
-                                                  dofs_on_other_cell[i]);
-                                              if (j_non_zero_e && i_non_zero_i)
-                                                cell_entries.emplace_back(
-                                                  dofs_on_other_cell[j],
-                                                  dofs_on_this_cell[i]);
-                                              if (j_non_zero_i && i_non_zero_i)
-                                                cell_entries.emplace_back(
-                                                  dofs_on_this_cell[j],
-                                                  dofs_on_this_cell[i]);
-                                              if (j_non_zero_e && i_non_zero_e)
-                                                cell_entries.emplace_back(
-                                                  dofs_on_other_cell[j],
-                                                  dofs_on_other_cell[i]);
-                                            }
-                                        }
+                                  if (flux_dof_mask(j, i) == always)
+                                    {
+                                      cell_entries.emplace_back(
+                                        dofs_on_this_cell[j],
+                                        dofs_on_other_cell[i]);
+                                      cell_entries.emplace_back(
+                                        dofs_on_other_cell[j],
+                                        dofs_on_this_cell[i]);
+                                      cell_entries.emplace_back(
+                                        dofs_on_this_cell[j],
+                                        dofs_on_this_cell[i]);
+                                      cell_entries.emplace_back(
+                                        dofs_on_other_cell[j],
+                                        dofs_on_other_cell[i]);
+                                    }
+                                  if (flux_dof_mask(j, i) == nonzero)
+                                    {
+                                      if (j_non_zero_i && i_non_zero_e)
+                                        cell_entries.emplace_back(
+                                          dofs_on_this_cell[j],
+                                          dofs_on_other_cell[i]);
+                                      if (j_non_zero_e && i_non_zero_i)
+                                        cell_entries.emplace_back(
+                                          dofs_on_other_cell[j],
+                                          dofs_on_this_cell[i]);
+                                      if (j_non_zero_i && i_non_zero_i)
+                                        cell_entries.emplace_back(
+                                          dofs_on_this_cell[j],
+                                          dofs_on_this_cell[i]);
+                                      if (j_non_zero_e && i_non_zero_e)
+                                        cell_entries.emplace_back(
+                                          dofs_on_other_cell[j],
+                                          dofs_on_other_cell[i]);
                                     }
                                 }
-                              sparsity.add_entries(
-                                make_array_view(cell_entries));
-                              cell_entries.clear();
                             }
-                          else
-                            {
-                              neighbor->get_dof_indices(dofs_on_other_cell);
-                              for (unsigned int i = 0; i < fe.n_dofs_per_cell();
-                                   ++i)
-                                {
-                                  const bool i_non_zero_i =
-                                    support_on_face(i, face_n);
-                                  const bool i_non_zero_e =
-                                    support_on_face(i, neighbor_face_n);
-                                  for (unsigned int j = 0;
-                                       j < fe.n_dofs_per_cell();
-                                       ++j)
-                                    {
-                                      const bool j_non_zero_i =
-                                        support_on_face(j, face_n);
-                                      const bool j_non_zero_e =
-                                        support_on_face(j, neighbor_face_n);
-                                      if (flux_dof_mask(i, j) == always)
-                                        {
-                                          cell_entries.emplace_back(
-                                            dofs_on_this_cell[i],
-                                            dofs_on_other_cell[j]);
-                                          cell_entries.emplace_back(
-                                            dofs_on_other_cell[i],
-                                            dofs_on_this_cell[j]);
-                                          cell_entries.emplace_back(
-                                            dofs_on_this_cell[i],
-                                            dofs_on_this_cell[j]);
-                                          cell_entries.emplace_back(
-                                            dofs_on_other_cell[i],
-                                            dofs_on_other_cell[j]);
-                                        }
-                                      if (flux_dof_mask(i, j) == nonzero)
-                                        {
-                                          if (i_non_zero_i && j_non_zero_e)
-                                            cell_entries.emplace_back(
-                                              dofs_on_this_cell[i],
-                                              dofs_on_other_cell[j]);
-                                          if (i_non_zero_e && j_non_zero_i)
-                                            cell_entries.emplace_back(
-                                              dofs_on_other_cell[i],
-                                              dofs_on_this_cell[j]);
-                                          if (i_non_zero_i && j_non_zero_i)
-                                            cell_entries.emplace_back(
-                                              dofs_on_this_cell[i],
-                                              dofs_on_this_cell[j]);
-                                          if (i_non_zero_e && j_non_zero_e)
-                                            cell_entries.emplace_back(
-                                              dofs_on_other_cell[i],
-                                              dofs_on_other_cell[j]);
-                                        }
-
-                                      if (flux_dof_mask(j, i) == always)
-                                        {
-                                          cell_entries.emplace_back(
-                                            dofs_on_this_cell[j],
-                                            dofs_on_other_cell[i]);
-                                          cell_entries.emplace_back(
-                                            dofs_on_other_cell[j],
-                                            dofs_on_this_cell[i]);
-                                          cell_entries.emplace_back(
-                                            dofs_on_this_cell[j],
-                                            dofs_on_this_cell[i]);
-                                          cell_entries.emplace_back(
-                                            dofs_on_other_cell[j],
-                                            dofs_on_other_cell[i]);
-                                        }
-                                      if (flux_dof_mask(j, i) == nonzero)
-                                        {
-                                          if (j_non_zero_i && i_non_zero_e)
-                                            cell_entries.emplace_back(
-                                              dofs_on_this_cell[j],
-                                              dofs_on_other_cell[i]);
-                                          if (j_non_zero_e && i_non_zero_i)
-                                            cell_entries.emplace_back(
-                                              dofs_on_other_cell[j],
-                                              dofs_on_this_cell[i]);
-                                          if (j_non_zero_i && i_non_zero_i)
-                                            cell_entries.emplace_back(
-                                              dofs_on_this_cell[j],
-                                              dofs_on_this_cell[i]);
-                                          if (j_non_zero_e && i_non_zero_e)
-                                            cell_entries.emplace_back(
-                                              dofs_on_other_cell[j],
-                                              dofs_on_other_cell[i]);
-                                        }
-                                    }
-                                }
-                              sparsity.add_entries(
-                                make_array_view(cell_entries));
-                              cell_entries.clear();
-                            }
+                          sparsity.add_entries(make_array_view(cell_entries));
+                          cell_entries.clear();
                         }
                     }
                 }
