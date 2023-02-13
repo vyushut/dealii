@@ -866,22 +866,6 @@ namespace DoFTools
                                                // the common face
                             continue;
 
-                          // Surprisingly, neighbor_is_coarser() never returns
-                          // true
-                          // in 1D because one can always go back from the
-                          // neighbor because faces are 0D. Maybe needs to be
-                          // revisited. Luckily, the level/index information is
-                          // enough to visit each face exactly once because any
-                          // mesh refinement is isotropic in 1D
-                          if ((dim == 1) &&
-                              (neighbor->level() ==
-                               cell->level()) // neighbor_is_coarser() wouldn't
-                                              // work here
-                              && (neighbor->index() >
-                                  cell->index())) // artificial way to visit
-                                                  // once the common face
-                            continue;
-
                           // If the common face is not a regular face (is a
                           // subface) of the neighbor proceed to the
                           // accumulation of sparsity pattern because this is
@@ -894,8 +878,7 @@ namespace DoFTools
                                 face_n); // you CAN go back from the neighbour
                           // to the current cell
 
-                          if ((dim != 1) &&
-                              this_face_isnt_regular_for_neighbor &&
+                          if (this_face_isnt_regular_for_neighbor &&
                               (neighbor->index() >
                                cell
                                  ->index())) // if the index (or any other
