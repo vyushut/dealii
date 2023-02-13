@@ -2549,8 +2549,13 @@ bool
 CellAccessor<dim, spacedim>::neighbor_is_coarser(
   const unsigned int face_no) const
 {
-  return neighbor_of_neighbor_internal(face_no) ==
-         numbers::invalid_unsigned_int;
+  if (dim == 1)
+    return this->has_periodic_neighbor(face_no) ?
+             (this->periodic_neighbor_level(face_no) > this->level()) :
+             (this->neighbor_level(face_no) > this->level());
+  else
+    return neighbor_of_neighbor_internal(face_no) ==
+           numbers::invalid_unsigned_int;
 }
 
 
