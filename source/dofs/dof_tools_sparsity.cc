@@ -1150,9 +1150,17 @@ namespace DoFTools
                                     }
                                 }
                             }
+
+                            Table<2,bool> dof_mask;
+                            constraints.add_entries_local_to_global(dofs_on_this_cell, dofs_on_other_cell, sparsity, keep_constrained_dofs, dof_mask);
+                            constraints.add_entries_local_to_global(dofs_on_other_cell, dofs_on_this_cell, sparsity, keep_constrained_dofs, dof_mask);
+
+
                         }
                     }
-                  sparsity.add_entries(make_array_view(cell_entries));
+                  //sparsity.add_entries(make_array_view(cell_entries));
+
+
                   cell_entries.clear();
                 }
           }
