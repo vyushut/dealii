@@ -773,29 +773,39 @@ namespace DoFTools
         // 1D case is treated separately because faces are 0D
         // "neighbor is finer" may only happens in 1D with OD
         // faces
-        if ((dim == 1) &&
-            (neighbor->level() > cell->level())) // artificial way to visit once
-          // the common face
-          return true;
+        if (dim == 1)
+          {
+            if ((neighbor->level() > cell->level()) // happens only in 1D
+                || ((neighbor->level() == cell->level()) &&
+                    (neighbor->index() >
+                     cell->index())) // artificial way to visit once
+            )
+              return true;
+          }
 
-        // If the common face is not a regular face (is a
-        // subface) of the neighbor proceed to the
-        // accumulation of sparsity pattern because this is
-        // the only time this face is visited otherwise use an
-        // artificial way to visit this face once
-        bool this_face_isnt_regular_for_neighbor =
-          !periodic_neighbor ? !cell->neighbor_is_coarser(face_n) :
-                               !cell->periodic_neighbor_is_coarser(
-                                 face_n); // you CAN go back from the neighbour
-        // to the current cell
-
-        if (this_face_isnt_regular_for_neighbor &&
-            (neighbor->index() > cell->index())) // if the index (or any other
-          // objective scalar property)
-          // comparison returns false then
-          // will it be true when the next
-          // time the common face is visited
-          return true;
+        if (dim != 1)
+          {
+            // If the common face is not a regular face (is a
+            // subface) of the neighbor proceed to the
+            // accumulation of sparsity pattern because this is
+            // the only time this face is visited otherwise use an
+            // artificial way to visit this face once
+            bool this_face_isnt_regular_for_neighbor =
+              !periodic_neighbor ?
+                !cell->neighbor_is_coarser(face_n) :
+                !cell->periodic_neighbor_is_coarser(
+                  face_n); // you CAN go back from the neighbour
+            // to the current cell
+            if (this_face_isnt_regular_for_neighbor &&
+                (neighbor->index() >
+                 cell->index())) // if the index (or any other scalar property
+                                 // that keeps the order if this neighbor and
+                                 // cell are accessed on another MPI rank)
+              // comparison returns false then
+              // will it be true when the next
+              // time the common face is visited
+              return true;
+          }
 
         if (!face_has_flux_coupling(cell, face_n))
           return true;
@@ -1176,7 +1186,6 @@ namespace DoFTools
   }
 
 
-
   template <int dim, int spacedim, typename number>
   void
   make_flux_sparsity_pattern(
@@ -1248,7 +1257,6 @@ namespace DoFTools
 // --------------------------------------------------- explicit instantiations
 
 #include "dof_tools_sparsity.inst"
-
 
 
 DEAL_II_NAMESPACE_CLOSE
