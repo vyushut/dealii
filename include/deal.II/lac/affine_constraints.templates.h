@@ -4453,6 +4453,44 @@ AffineConstraints<number>::add_entries_local_to_global(
         sparsity_pattern.add_row_entries(rows[i], make_array_view(cols), true);
       return;
     }
+  else {
+      // complicated case: we need to filter out some indices. then the function
+      // gets similar to the function for distributing matrix entries, see there
+      // for additional comments.
+      internal::AffineConstraints::GlobalRowsFromLocal<number> &global_rows =
+              scratch_data->global_rows;
+      global_rows.reinit(n_local_rows);
+      make_sorted_row_list(row_indices, global_rows);
+      const size_type n_actual_dofs = global_rows.size();
+
+      // create arrays for the column indices that will then be written into the
+      // sparsity pattern.
+      std::vector<size_type> &cols = scratch_data->columns;
+      cols.resize(n_actual_dofs);
+
+      for (size_type i = 0; i < n_actual_dofs; ++i)
+      {
+          std::vector<size_type>::iterator col_ptr = cols.begin();
+          const size_type                  row     = global_rows.global_row(i);
+          internal::AffineConstraints::resolve_matrix_row(
+                  global_rows, i, 0, n_actual_dofs, dof_mask, col_ptr);
+
+          // finally, write all the information that accumulated under the given
+          // process into the global matrix row and into the vector
+          if (col_ptr != cols.begin())
+              sparsity_pattern.add_row_entries(row,
+                                               make_array_view(cols.begin(), col_ptr),
+                                               true);
+      }
+      internal::AffineConstraints::set_sparsity_diagonals(global_rows,
+                                                          row_indices,
+                                                          dof_mask,
+                                                          keep_constrained_entries,
+                                                          *scratch_data,
+                                                          sparsity_pattern);
+      return;
+
+  }
 
   // TODO: implement this
   Assert(false, ExcNotImplemented());
