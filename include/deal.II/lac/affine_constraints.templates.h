@@ -3347,6 +3347,85 @@ namespace internal
         }
     }
 
+      // Same function to resolve all entries that will be added to the given
+      // global row global_rows[i] as before, now for sparsity pattern and with dof_mask
+    template <typename number>
+    inline void
+    resolve_matrix_row(const GlobalRowsFromLocal<number> &global_rows,
+                           const GlobalRowsFromLocal<number> &global_cols,
+                           const size_type                    i,
+                           const size_type                    column_start,
+                           const size_type                    column_end,
+                           const Table<2, bool> &             dof_mask,
+                           std::vector<size_type>::iterator & col_ptr)
+    {
+      if (column_end == column_start)
+        return;
+
+      const size_type loc_row = global_rows.local_row(i);
+
+      // fast function if there are no indirect references to any of the local
+      // rows at all on this set of dofs
+      if (global_rows.have_indirect_rows() == false)
+        {
+          Assert(loc_row < dof_mask.n_rows(), ExcInternalError());
+
+          for (size_type j = column_start; j < column_end; ++j)
+            {
+              const size_type loc_col = global_cols.local_row(j);
+              Assert(loc_col < dof_mask.n_cols(), ExcInternalError());
+
+              if (dof_mask(loc_row, loc_col) == true)
+                *col_ptr++ = global_cols.global_row(j);
+            }
+        }
+          // slower functions when there are indirect references and when we need to
+          // do some more checks.
+      else
+      {//TODO: this needs to be covered by tests
+          for (size_type j = column_start; j < column_end; ++j)
+          {
+              const size_type loc_col = global_cols.local_row(j);
+              if (loc_row != numbers::invalid_size_type)
+              {
+                  Assert(loc_row < dof_mask.n_rows(), ExcInternalError());
+                  if (loc_col != numbers::invalid_size_type)
+                  {
+                      Assert(loc_col < dof_mask.n_cols(), ExcInternalError());
+                      if (dof_mask(loc_row, loc_col) == true)
+                          goto add_this_index;
+                  }
+
+                  for (size_type p = 0; p < global_cols.size(j); ++p)
+                      if (dof_mask(loc_row, global_cols.local_row(j, p)) == true)
+                          goto add_this_index;
+              }
+
+              for (size_type q = 0; q < global_rows.size(i); ++q)
+              {
+                  if (loc_col != numbers::invalid_size_type)
+                  {
+                      Assert(loc_col < dof_mask.n_cols(), ExcInternalError());
+                      if (dof_mask(global_rows.local_row(i, q), loc_col) ==
+                          true)
+                          goto add_this_index;
+                  }
+
+                  for (size_type p = 0; p < global_rows.size(j); ++p)
+                      if (dof_mask(global_rows.local_row(i, q),
+                                   global_cols.local_row(j, p)) == true)
+                          goto add_this_index;
+              }
+
+              continue;
+              // if we got some nontrivial value, append it to the array of
+              // values.
+              add_this_index:
+              *col_ptr++ = global_cols.global_row(j);
+          }
+      }
+    }
+
     // specialized function that can write into the row of a
     // SparseMatrix<number>.
     namespace dealiiSparseMatrix
@@ -4453,44 +4532,56 @@ AffineConstraints<number>::add_entries_local_to_global(
         sparsity_pattern.add_row_entries(rows[i], make_array_view(cols), true);
       return;
     }
-  else {
+  else
+    {
       // complicated case: we need to filter out some indices. then the function
       // gets similar to the function for distributing matrix entries, see there
       // for additional comments.
+      std::vector<size_type> &cols = scratch_data->columns;
       internal::AffineConstraints::GlobalRowsFromLocal<number> &global_rows =
-              scratch_data->global_rows;
+        scratch_data->global_rows;
+      internal::AffineConstraints::GlobalRowsFromLocal<number> &global_cols =
+        scratch_data->global_columns;
+
       global_rows.reinit(n_local_rows);
+      global_cols.reinit(n_local_cols);
+
       make_sorted_row_list(row_indices, global_rows);
-      const size_type n_actual_dofs = global_rows.size();
+      col_constraints.make_sorted_row_list(col_indices, global_cols);
 
       // create arrays for the column indices that will then be written into the
       // sparsity pattern.
-      std::vector<size_type> &cols = scratch_data->columns;
-      cols.resize(n_actual_dofs);
-
-      for (size_type i = 0; i < n_actual_dofs; ++i)
-      {
+      for (size_type i = 0; i < global_rows.size(); ++i)
+        {
           std::vector<size_type>::iterator col_ptr = cols.begin();
           const size_type                  row     = global_rows.global_row(i);
+
           internal::AffineConstraints::resolve_matrix_row(
-                  global_rows, i, 0, n_actual_dofs, dof_mask, col_ptr);
+            global_rows,
+            global_cols,
+            i,
+            0,
+            global_cols.size(),
+            dof_mask,
+            col_ptr);
 
           // finally, write all the information that accumulated under the given
           // process into the global matrix row and into the vector
           if (col_ptr != cols.begin())
-              sparsity_pattern.add_row_entries(row,
-                                               make_array_view(cols.begin(), col_ptr),
-                                               true);
-      }
-      internal::AffineConstraints::set_sparsity_diagonals(global_rows,
-                                                          row_indices,
-                                                          dof_mask,
-                                                          keep_constrained_entries,
-                                                          *scratch_data,
-                                                          sparsity_pattern);
+            sparsity_pattern.add_row_entries(row,
+                                             make_array_view(cols.begin(),
+                                                             col_ptr),
+                                             true);
+        }
+      internal::AffineConstraints::set_sparsity_diagonals(
+        global_rows,
+        row_indices,
+        dof_mask,
+        keep_constrained_entries,
+        *scratch_data,
+        sparsity_pattern);
       return;
-
-  }
+    }
 
   // TODO: implement this
   Assert(false, ExcNotImplemented());

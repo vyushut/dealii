@@ -749,6 +749,131 @@ namespace DoFTools
   }
 
 
+  template <int dim, int spacedim>
+  std::vector<Table<2, bool>>
+  bool_dof_internal_couplings_from_component_couplings(
+    const hp::FECollection<dim, spacedim> &fe,
+    const Table<2, Coupling> &             int_mask)
+  {
+    Table<2, Coupling> internal_only_mask(fe.n_components(), fe.n_components());
+    for (unsigned int c1 = 0; c1 < fe.n_components(); ++c1)
+      for (unsigned int c2 = 0; c2 < fe.n_components(); ++c2)
+        {
+          if (int_mask(c1, c2) !=
+              none) // || flux_mask(c1, c2) != none)//REDUNDENT
+            internal_only_mask(c1, c2) = always;
+        }
+
+    std::vector<Table<2, Coupling>> internal_only_dof_mask =
+      dof_couplings_from_component_couplings(fe, internal_only_mask);
+
+    std::vector<Table<2, bool>> return_value(fe.size());
+
+    for (unsigned int f = 0; f < fe.size(); ++f)
+      {
+        return_value[f].reinit(
+          TableIndices<2>(fe[f].n_dofs_per_cell(), fe[f].n_dofs_per_cell()));
+        return_value[f].fill(false);
+        for (unsigned int i = 0; i < fe[f].n_dofs_per_cell(); ++i)
+          for (unsigned int j = 0; j < fe[f].n_dofs_per_cell(); ++j)
+            if (internal_only_dof_mask[f](i, j) != none)
+              return_value[f](i, j) = true;
+      }
+  }
+
+
+  template <int dim, int spacedim>
+  Table<2, Table<2, bool>>
+  bool_dof_flux_couplings_from_component_couplings(
+    const hp::FECollection<dim, spacedim> &fe,
+    const Table<2, Coupling> &             flux_mask)
+  {
+    Table<2, Coupling> flux_only_mask(fe.n_components(), fe.n_components());
+    for (unsigned int c1 = 0; c1 < fe.n_components(); ++c1)
+      for (unsigned int c2 = 0; c2 < fe.n_components(); ++c2)
+        {
+          if (flux_mask(c1, c2) != none)
+            flux_only_mask(c1, c2) = always; // REDUNDENT
+        }
+
+    Table<2, Table<2, bool>> return_value(fe.size(), fe.size());
+
+    for (unsigned int f = 0; f < fe.size(); ++f)
+      {
+        for (unsigned int g = 0; g < fe.size(); ++g)
+          {
+            unsigned int n_dofs_cell     = fe[f].n_dofs_per_cell();
+            unsigned int n_dofs_neighbor = fe[g].n_dofs_per_cell();
+
+            Table<2, Coupling> cell_to_neighbor_flux_dof_mask(n_dofs_cell,
+                                                              n_dofs_neighbor);
+            //                Table<2, Coupling> neighbor_to_cell_flux_dof_mask(
+            //                        n_dofs_neighbor, n_dofs_cell);
+            for (unsigned int i = 0; i < n_dofs_cell; ++i)
+              {
+                const unsigned int ii =
+                  (fe[f].is_primitive(i) ?
+                     fe[f].system_to_component_index(i).first :
+                     fe[f]
+                       .get_nonzero_components(i)
+                       .first_selected_component());
+                Assert(ii < fe[f].n_components(), ExcInternalError());
+
+                for (unsigned int j = 0; j < n_dofs_neighbor; ++j)
+                  {
+                    const unsigned int jj =
+                      (fe[g].is_primitive(j) ?
+                         fe[g].system_to_component_index(j).first :
+                         fe[g]
+                           .get_nonzero_components(j)
+                           .first_selected_component());
+                    Assert(jj < fe[g].n_components(), ExcInternalError());
+
+                    cell_to_neighbor_flux_dof_mask(i, j) =
+                      flux_only_mask(ii, jj);
+                    //                        neighbor_to_cell_flux_dof_mask(j,
+                    //                        i) =
+                    //                                flux_only_mask(jj, ii);
+                  }
+              }
+
+            // convert to boolean tables
+            Table<2, bool> bool_cell_to_neighbor_flux_dof_mask;
+            // Table<2, bool> bool_neighbor_to_cell_flux_dof_mask;
+
+            bool_cell_to_neighbor_flux_dof_mask.reinit(
+              TableIndices<2>(fe[f].n_dofs_per_cell(),
+                              fe[g].n_dofs_per_cell()));
+            //                bool_neighbor_to_cell_flux_dof_mask.reinit(
+            //                        TableIndices<2>(
+            //                                fe[g].n_dofs_per_cell(),
+            //                                fe[f].n_dofs_per_cell()));
+
+            bool_cell_to_neighbor_flux_dof_mask.fill(false);
+            //   bool_neighbor_to_cell_flux_dof_mask.fill(false);
+
+            for (unsigned int i = 0; i < fe[f].n_dofs_per_cell(); ++i)
+              for (unsigned int j = 0; j < fe[g].n_dofs_per_cell(); ++j)
+                if (cell_to_neighbor_flux_dof_mask(i, j) != none)
+                  bool_cell_to_neighbor_flux_dof_mask(i, j) = true;
+
+            //                for (unsigned int i = 0;
+            //                     i < fe[g].n_dofs_per_cell();
+            //                     ++i)
+            //                    for (unsigned int j = 0;
+            //                         j < fe[f].n_dofs_per_cell();
+            //                         ++j)
+            //                        if (neighbor_to_cell_flux_dof_mask(i, j)
+            //                        != none)
+            //                            bool_neighbor_to_cell_flux_dof_mask(i,
+            //                            j) =
+            //                                    true;
+
+            return_value(f, g) = bool_cell_to_neighbor_flux_dof_mask;
+          }
+      }
+  }
+
 
   namespace internal
   {
@@ -1022,7 +1147,6 @@ namespace DoFTools
             // it for all combinations of elements in the hp::FECollection.
             // consequently, the implementation here is simpler and probably
             // less efficient but at least readable...
-
             const dealii::hp::FECollection<dim, spacedim> &fe =
               dof.get_fe_collection();
 
@@ -1037,103 +1161,16 @@ namespace DoFTools
             AssertDimension(flux_mask.size(0), n_components);
             AssertDimension(flux_mask.size(1), n_components);
 
-            // note that we also need to set the respective entries if flux_mask
-            // says so. this is necessary since we need to consider all degrees
-            // of freedom on a cell for interior faces.
-            Table<2, Coupling> internal_only_mask(n_components, n_components);
-            for (unsigned int c1 = 0; c1 < n_components; ++c1)
-              for (unsigned int c2 = 0; c2 < n_components; ++c2)
-                if (int_mask(c1, c2) != none)// || flux_mask(c1, c2) != none)
-                  internal_only_mask(c1, c2) = always;
+            // Prepare all cell dof masks for each FE
+            std::vector<Table<2, bool>> bool_internal_only_dof_mask =
+              bool_dof_internal_couplings_from_component_couplings(fe,
+                                                                   int_mask);
 
-              Table<2, Coupling> flux_only_mask(n_components, n_components);
-              for (unsigned int c1 = 0; c1 < n_components; ++c1)
-                  for (unsigned int c2 = 0; c2 < n_components; ++c2)
-                      if (flux_mask(c1, c2) != none)
-                          flux_only_mask(c1, c2) = always;
+            // Prepare face dof masks for each pair of FE's for flux couplings
+            Table<2, Table<2, bool>> bool_flux_only_dof_mask =
+              bool_dof_flux_couplings_from_component_couplings(fe, flux_mask);
 
-            std::vector<Table<2, Coupling>> internal_only_dof_mask =
-              dof_couplings_from_component_couplings(fe, internal_only_mask);
-
-              std::cout <<  "Internal dof masks:"  <<std::endl;
-              for (unsigned int f = 0; f < fe.size(); ++f)
-              {
-                  std::cout <<  "\tFESystem " << std::to_string(f) <<std::endl;
-                  for (unsigned int i = 0; i < fe[f].n_dofs_per_cell(); ++i){
-                      for (unsigned int j = 0; j < fe[f].n_dofs_per_cell(); ++j)
-                          std::cout << (internal_only_dof_mask[f](i, j)) << " ";
-                      std::cout << std::endl;
-                  }
-              }
-
-              // Convert internal_only_dof_mask[f] to bool_internal_only_dof_mask[f] so we
-              // can pass it to constraints.add_entries_local_to_global()
-              std::vector<Table<2, bool>> bool_internal_only_dof_mask(fe.size());
-              for (unsigned int f = 0; f < fe.size(); ++f)
-              {
-                  bool_internal_only_dof_mask[f].reinit(
-                          TableIndices<2>(fe[f].n_dofs_per_cell(),
-                                          fe[f].n_dofs_per_cell()));
-                  bool_internal_only_dof_mask[f].fill(false);
-                  for (unsigned int i = 0; i < fe[f].n_dofs_per_cell(); ++i)
-                      for (unsigned int j = 0; j < fe[f].n_dofs_per_cell(); ++j)
-                          if (internal_only_dof_mask[f](i, j) != none)
-                              bool_internal_only_dof_mask[f](i, j) = true;
-              }
-
-              //printout
-//              for (unsigned int f = 0; f < fe.size(); ++f)
-//              {
-//                  std::cout <<  "Internal dof mask FE" << std::to_string(f) <<std::endl;
-//
-//                  for (unsigned int i = 0; i < fe[f].n_dofs_per_cell(); ++i) {
-//                      for (unsigned int j = 0; j < fe[f].n_dofs_per_cell(); ++j) {
-//                          std::cout << bool_internal_only_dof_mask[f](i, j) << " ";
-//                      }
-//                      std::cout << std::endl;
-//                  }
-//              }
-//
-//            unsigned int n_dofs0=fe[0].n_dofs_per_cell();
-//            unsigned int n_dofs1=fe[1].n_dofs_per_cell();
-//            Table<2, Coupling> fffflux_dof_mask0(n_dofs0, n_dofs1);
-//            Table<2, Coupling> fffflux_dof_mask1(n_dofs1, n_dofs0);
-//            for (unsigned int i = 0; i < n_dofs0; ++i)
-//      {
-//        const unsigned int ii =
-//          (fe[0].is_primitive(i) ?
-//             fe[0].system_to_component_index(i).first :
-//             fe[0].get_nonzero_components(i).first_selected_component());
-//        Assert(ii < fe[0].n_components(), ExcInternalError());
-//
-//        for (unsigned int j = 0; j < n_dofs1; ++j)
-//          {
-//            const unsigned int jj =
-//              (fe[1].is_primitive(j) ?
-//                 fe[1].system_to_component_index(j).first :
-//                 fe[1].get_nonzero_components(j).first_selected_component());
-//            Assert(jj < fe[1].n_components(), ExcInternalError());
-//
-//            fffflux_dof_mask0(i, j) = flux_only_mask(ii, jj);
-//            fffflux_dof_mask1(j, i) = flux_only_mask(jj, ii);
-//
-//          }
-//      }
-//              std::cout <<  "Flux dof mask FE01 space "  <<std::endl;
-//                for (unsigned int i = 0; i < fe[0].n_dofs_per_cell(); ++i) {
-//                    for (unsigned int j = 0; j < fe[1].n_dofs_per_cell(); ++j)
-//                        std::cout << (fffflux_dof_mask0(i, j)) << " ";
-//                    std::cout << std::endl;
-//                }
-//
-//                     std::cout <<  "Flux dof mask FE10 space "  <<std::endl;
-//                for (unsigned int i = 0; i < fe[1].n_dofs_per_cell(); ++i) {
-//                    for (unsigned int j = 0; j < fe[0].n_dofs_per_cell(); ++j)
-//                        std::cout << (fffflux_dof_mask1(i, j)) << " ";
-//                    std::cout << std::endl;
-//                }
-
-            //MAIN LOGIC
+            // MAIN LOGIC
             for (const auto &cell : dof.active_cell_iterators())
               if (((subdomain_id == numbers::invalid_subdomain_id) ||
                    (subdomain_id == cell->subdomain_id())) &&
@@ -1154,10 +1191,8 @@ namespace DoFTools
                   // Loop over interior faces
                   for (const unsigned int face : cell->face_indices())
                     {
-                      const bool periodic_neighbor =
-                        cell->has_periodic_neighbor(face);
-
-                      if ((!cell->at_boundary(face)) || periodic_neighbor)
+                      if ((!cell->at_boundary(face)) ||
+                          cell->has_periodic_neighbor(face))
                         {
                           typename dealii::DoFHandler<dim, spacedim>::
                             level_cell_iterator neighbor =
@@ -1171,132 +1206,31 @@ namespace DoFTools
                             neighbor->get_fe().n_dofs_per_cell());
                           neighbor->get_dof_indices(dofs_on_other_cell);
 
-//                          for (unsigned int i = 0;
-//                               i < cell->get_fe().n_dofs_per_cell();
-//                               ++i)
-//                            {
-//                              const unsigned int ii =
-//                                (cell->get_fe().is_primitive(i) ?
-//                                   cell->get_fe()
-//                                     .system_to_component_index(i)
-//                                     .first :
-//                                   cell->get_fe()
-//                                     .get_nonzero_components(i)
-//                                     .first_selected_component());
-//
-//                              Assert(ii < cell->get_fe().n_components(),
-//                                     ExcInternalError());
-//
-//                              for (unsigned int j = 0;
-//                                   j < neighbor->get_fe().n_dofs_per_cell();
-//                                   ++j)
-//                                {
-//                                  const unsigned int jj =
-//                                    (neighbor->get_fe().is_primitive(j) ?
-//                                       neighbor->get_fe()
-//                                         .system_to_component_index(j)
-//                                         .first :
-//                                       neighbor->get_fe()
-//                                         .get_nonzero_components(j)
-//                                         .first_selected_component());
-//
-//                                  Assert(jj < neighbor->get_fe().n_components(),
-//                                         ExcInternalError());
-//
-//                                  if ((flux_mask(ii, jj) == always) ||
-//                                      (flux_mask(ii, jj) == nonzero))
-//                                    {
-//                                      cell_entries.emplace_back(
-//                                        dofs_on_this_cell[i],
-//                                        dofs_on_other_cell[j]);
-//                                    }
-//
-//                                  if ((flux_mask(jj, ii) == always) ||
-//                                      (flux_mask(jj, ii) == nonzero))
-//                                    {
-//                                      cell_entries.emplace_back(
-//                                        dofs_on_other_cell[j],
-//                                        dofs_on_this_cell[i]);
-//                                    }
-//                                }
-//                            }
+                          // for a pair of cell and neighbor and their FE's,
+                          // compute two rectangular dof masks
+                          Table<2, bool> &cell_to_neighbor_dof_mask =
+                            bool_flux_only_dof_mask(
+                              cell->active_fe_index(),
+                              neighbor->active_fe_index());
+                          Table<2, bool> &neighbor_to_cell_dof_mask =
+                            bool_flux_only_dof_mask(neighbor->active_fe_index(),
+                                                    cell->active_fe_index());
 
-                            // for a pair of cell and neighbor and their FE's, compute two rectangular dof masks similar to
-                            // what dof_couplings_from_component_couplings does .
-                            // TODO: such pairs should be precomputed to be reused for each active cell
-                          unsigned int n_dofs_cell=cell->get_fe().n_dofs_per_cell();
-                          unsigned int n_dofs_neighbor=neighbor->get_fe().n_dofs_per_cell();
+                          constraints.add_entries_local_to_global(
+                            dofs_on_this_cell,
+                            dofs_on_other_cell,
+                            sparsity,
+                            keep_constrained_dofs,
+                            cell_to_neighbor_dof_mask);
 
-                          Table<2, Coupling> cell_to_neighbor_flux_dof_mask(n_dofs_cell, n_dofs_neighbor);
-                          Table<2, Coupling> neighbor_to_cell_flux_dof_mask(n_dofs_neighbor, n_dofs_cell);
-                          for (unsigned int i = 0; i < n_dofs_cell; ++i)
-                          {
-                              const unsigned int ii =
-                                      (cell->get_fe().is_primitive(i) ?
-                                       cell->get_fe().system_to_component_index(i).first :
-                                       cell->get_fe().get_nonzero_components(i).first_selected_component());
-                              Assert(ii < cell->get_fe().n_components(), ExcInternalError());
-
-                              for (unsigned int j = 0; j < n_dofs_neighbor; ++j)
-                              {
-                                  const unsigned int jj =
-                                          (neighbor->get_fe().is_primitive(j) ?
-                                            neighbor->get_fe().system_to_component_index(j).first :
-                                            neighbor->get_fe().get_nonzero_components(j).first_selected_component());
-                                  Assert(jj < neighbor->get_fe().n_components(), ExcInternalError());
-
-                                  cell_to_neighbor_flux_dof_mask(i, j) = flux_only_mask(ii, jj);
-                                  neighbor_to_cell_flux_dof_mask(j, i) = flux_only_mask(jj, ii);
-
-                              }
-                          }
-
-                          //convert to boolean tables
-                          Table<2, bool> bool_cell_to_neighbor_flux_dof_mask;
-                          Table<2, bool> bool_neighbor_to_cell_flux_dof_mask;
-
-                          bool_cell_to_neighbor_flux_dof_mask.reinit(
-                                  TableIndices<2>(cell->get_fe().n_dofs_per_cell(),
-                                                  neighbor->get_fe().n_dofs_per_cell()));
-                          bool_neighbor_to_cell_flux_dof_mask.reinit(
-                                  TableIndices<2>(neighbor->get_fe().n_dofs_per_cell(),
-                                                  cell->get_fe().n_dofs_per_cell()));
-
-                          bool_cell_to_neighbor_flux_dof_mask.fill(false);
-                          bool_neighbor_to_cell_flux_dof_mask.fill(false);
-
-                          for (unsigned int i = 0; i < cell->get_fe().n_dofs_per_cell(); ++i)
-                              for (unsigned int j = 0; j < neighbor->get_fe().n_dofs_per_cell(); ++j)
-                                  if (cell_to_neighbor_flux_dof_mask(i, j) != none)
-                                      bool_cell_to_neighbor_flux_dof_mask(i, j) = true;
-
-                          for (unsigned int i = 0; i < neighbor->get_fe().n_dofs_per_cell(); ++i)
-                              for (unsigned int j = 0; j < cell->get_fe().n_dofs_per_cell(); ++j)
-                                  if (neighbor_to_cell_flux_dof_mask(i, j) != none)
-                                      bool_neighbor_to_cell_flux_dof_mask(i, j) = true;
-
-                          //printout
-                          std::cout << "Flux mask cell-neighbor " << std::endl;
-                          for (unsigned int i = 0; i < cell->get_fe().n_dofs_per_cell(); ++i) {
-                              for (unsigned int j = 0; j < neighbor->get_fe().n_dofs_per_cell(); ++j) {
-                                  std::cout << bool_cell_to_neighbor_flux_dof_mask(i, j) << " ";
-                              }
-                              std::cout << std::endl;
-                          }
-                          std::cout << "Flux mask neighbor-cell" << std::endl;
-                          for (unsigned int i = 0; i < neighbor->get_fe().n_dofs_per_cell(); ++i) {
-                              for (unsigned int j = 0; j < cell->get_fe().n_dofs_per_cell(); ++j) {
-                                  std::cout << bool_neighbor_to_cell_flux_dof_mask(i, j) << " ";
-                              }
-                              std::cout << std::endl;
-                          }
-                            //Table<2,bool> dof_mask;
-                            constraints.add_entries_local_to_global(dofs_on_this_cell, dofs_on_other_cell, sparsity, keep_constrained_dofs, bool_cell_to_neighbor_flux_dof_mask);
-                            constraints.add_entries_local_to_global(dofs_on_other_cell, dofs_on_this_cell, sparsity, keep_constrained_dofs, bool_neighbor_to_cell_flux_dof_mask);
+                          constraints.add_entries_local_to_global(
+                            dofs_on_other_cell,
+                            dofs_on_this_cell,
+                            sparsity,
+                            keep_constrained_dofs,
+                            neighbor_to_cell_dof_mask);
                         }
                     }
-                  //sparsity.add_entries(make_array_view(cell_entries));
-                  //cell_entries.clear();
                 }
           }
       }
