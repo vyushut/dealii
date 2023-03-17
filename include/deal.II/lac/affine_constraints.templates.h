@@ -3347,17 +3347,18 @@ namespace internal
         }
     }
 
-      // Same function to resolve all entries that will be added to the given
-      // global row global_rows[i] as before, now for sparsity pattern and with dof_mask
+    // Same function to resolve all entries that will be added to the given
+    // global row global_rows[i] as before, now for sparsity pattern and with
+    // dof_mask
     template <typename number>
     inline void
     resolve_matrix_row(const GlobalRowsFromLocal<number> &global_rows,
-                           const GlobalRowsFromLocal<number> &global_cols,
-                           const size_type                    i,
-                           const size_type                    column_start,
-                           const size_type                    column_end,
-                           const Table<2, bool> &             dof_mask,
-                           std::vector<size_type>::iterator & col_ptr)
+                       const GlobalRowsFromLocal<number> &global_cols,
+                       const size_type                    i,
+                       const size_type                    column_start,
+                       const size_type                    column_end,
+                       const Table<2, bool> &             dof_mask,
+                       std::vector<size_type>::iterator & col_ptr)
     {
       if (column_end == column_start)
         return;
@@ -3366,7 +3367,8 @@ namespace internal
 
       // fast function if there are no indirect references to any of the local
       // rows at all on this set of dofs
-      if (global_rows.have_indirect_rows() == false)
+      if ((global_rows.have_indirect_rows() == false) &&
+          (global_cols.have_indirect_rows() == false))
         {
           Assert(loc_row < dof_mask.n_rows(), ExcInternalError());
 
@@ -3379,51 +3381,51 @@ namespace internal
                 *col_ptr++ = global_cols.global_row(j);
             }
         }
-          // slower functions when there are indirect references and when we need to
-          // do some more checks.
+      // slower functions when there are indirect references and when we need to
+      // do some more checks.
       else
-      {//TODO: this needs to be covered by tests
+        { // TODO: this needs to be covered by tests
           for (size_type j = column_start; j < column_end; ++j)
-          {
+            {
               const size_type loc_col = global_cols.local_row(j);
               if (loc_row != numbers::invalid_size_type)
-              {
+                {
                   Assert(loc_row < dof_mask.n_rows(), ExcInternalError());
                   if (loc_col != numbers::invalid_size_type)
-                  {
+                    {
                       Assert(loc_col < dof_mask.n_cols(), ExcInternalError());
                       if (dof_mask(loc_row, loc_col) == true)
-                          goto add_this_index;
-                  }
+                        goto add_this_index;
+                    }
 
                   for (size_type p = 0; p < global_cols.size(j); ++p)
-                      if (dof_mask(loc_row, global_cols.local_row(j, p)) == true)
-                          goto add_this_index;
-              }
+                    if (dof_mask(loc_row, global_cols.local_row(j, p)) == true)
+                      goto add_this_index;
+                }
 
               for (size_type q = 0; q < global_rows.size(i); ++q)
-              {
+                {
                   if (loc_col != numbers::invalid_size_type)
-                  {
+                    {
                       Assert(loc_col < dof_mask.n_cols(), ExcInternalError());
                       if (dof_mask(global_rows.local_row(i, q), loc_col) ==
                           true)
-                          goto add_this_index;
-                  }
+                        goto add_this_index;
+                    }
 
                   for (size_type p = 0; p < global_rows.size(j); ++p)
-                      if (dof_mask(global_rows.local_row(i, q),
-                                   global_cols.local_row(j, p)) == true)
-                          goto add_this_index;
-              }
+                    if (dof_mask(global_rows.local_row(i, q),
+                                 global_cols.local_row(j, p)) == true)
+                      goto add_this_index;
+                }
 
               continue;
-              // if we got some nontrivial value, append it to the array of
-              // values.
-              add_this_index:
+            // if we got some nontrivial value, append it to the array of
+            // values.
+            add_this_index:
               *col_ptr++ = global_cols.global_row(j);
-          }
-      }
+            }
+        }
     }
 
     // specialized function that can write into the row of a
@@ -4556,22 +4558,19 @@ AffineConstraints<number>::add_entries_local_to_global(
           std::vector<size_type>::iterator col_ptr = cols.begin();
           const size_type                  row     = global_rows.global_row(i);
 
-          internal::AffineConstraints::resolve_matrix_row(
-            global_rows,
-            global_cols,
-            i,
-            0,
-            global_cols.size(),
-            dof_mask,
-            col_ptr);
+          internal::AffineConstraints::resolve_matrix_row(global_rows,
+                                                          global_cols,
+                                                          i,
+                                                          0,
+                                                          global_cols.size(),
+                                                          dof_mask,
+                                                          col_ptr);
 
           // finally, write all the information that accumulated under the given
           // process into the global matrix row and into the vector
           if (col_ptr != cols.begin())
-            sparsity_pattern.add_row_entries(row,
-                                             make_array_view(cols.begin(),
-                                                             col_ptr),
-                                             true);
+            sparsity_pattern.add_row_entries(
+              row, make_array_view(cols.begin(), col_ptr), true);
         }
       internal::AffineConstraints::set_sparsity_diagonals(
         global_rows,
