@@ -1,0 +1,39 @@
+
+DEAL:2d::unconstrained::Exactly 4 faces should be visited for creating the flux sparsity pattern + 4 faces visited during the assembly
+Visiting the face 1 on cell 0
+Visiting the face 1 on cell 1
+Visiting the face 2 on cell 1
+Visiting the face 0 on cell 3
+Visiting the face 1 on cell 0
+Visiting the face 1 on cell 1
+Visiting the face 2 on cell 1
+Visiting the face 0 on cell 3
+8. -12. -6. -6. 4. 0. 10. 2.       
+-12. 92. -18. 6. 0. 40. -106. -50. 32. 16. 
+-6. -18. 24. 0. -6. -18. 12. 12.       
+-6. 6. 0. 24. -6. 6. -12. -12.       
+4. -0. -6. -6. 8. -12. 2. 10.       
+0. 40. -18. 6. -12. 92. -50. -106. 16. 32. 
+10. -106. 12. -12. 2. -50. 160. 80. -64. -32. 
+2. -50. 12. -12. 10. -106. 80. 160. -32. -64. 
+   32.          16. -64. -32. 32. 16. 
+   16.          32. -32. -64. 16. 32. 
+DEAL:2d::constrained::Exactly 4 faces should be visited for creating the flux sparsity pattern + 4 faces visited during the assembly
+Visiting the face 1 on cell 0
+Visiting the face 1 on cell 1
+Visiting the face 2 on cell 1
+Visiting the face 0 on cell 3
+Visiting the face 1 on cell 0
+Visiting the face 1 on cell 1
+Visiting the face 2 on cell 1
+Visiting the face 0 on cell 3
+8. -15. -6. 0. 4. -3. 10. 2.       
+-15. 104. -18. 0. -3. 52. -112. -56. 32. 16. 
+-6. -18. 24. 0. -6. -18. 12. 12.       
+0. 0. 0. 24. 0. 0. 0. 0.       
+4. -3. -6. 0. 8. -15. 2. 10.       
+-3. 52. -18. 0. -15. 104. -56. -112. 16. 32. 
+10. -112. 12. 0. 2. -56. 160. 80. -64. -32. 
+2. -56. 12. 0. 10. -112. 80. 160. -32. -64. 
+   32.          16. -64. -32. 32. 16. 
+   16.          32. -32. -64. 16. 32. 
