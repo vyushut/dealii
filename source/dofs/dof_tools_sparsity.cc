@@ -813,22 +813,45 @@ namespace DoFTools
     });
   }
 
+  Table<2, bool>
+  or_of_boolean_masks(const Table<2, bool> &mask_1,
+                      const Table<2, bool> &mask_2)
+  {
+    Assert(mask_1.n_rows() == mask_2.n_rows(),
+           ExcDimensionMismatch(mask_1.n_rows(), mask_2.n_rows()));
+    Assert(mask_1.n_cols() == mask_2.n_cols(),
+           ExcDimensionMismatch(mask_1.n_cols(), mask_2.n_cols()));
+
+    const unsigned int n_rows = mask_1.n_rows();
+    const unsigned int n_cols = mask_1.n_cols();
+    Table<2, bool>     return_table(n_rows, n_cols);
+    return_table.fill(false);
+    for (unsigned int i = 0; i < n_rows; ++i)
+      for (unsigned int j = 0; j < n_cols; ++j)
+        return_table(i, j) = mask_1(i, j) || mask_2(i, j);
+    return return_table;
+  }
   // computes the boolean masks for the coupling of dofs inside each FE space in
   // a collection. Note that currently both Coupling::always and
   // Coupling::nonzero contribute to the boolean mask without distinction
   template <int dim, int spacedim>
   std::vector<Table<2, bool>>
   get_all_internal_dof_masks(const hp::FECollection<dim, spacedim> &fe,
-                             const Table<2, Coupling> &internal_couplings)
+                             const Table<2, Coupling> &internal_couplings,
+                             const Table<2, Coupling> &flux_couplings)
   {
     // Decides how to treat Couplings:always and Couplings:nonzero.
     // It is the internal_couplings which is distributed to dof masks below
     std::vector<Table<2, bool>> return_value(fe.size());
     for (unsigned int i = 0; i < fe.size(); ++i)
-      return_value[i] =
-        get_dof_mask(fe[i], fe[i], internal_couplings, [&](Coupling tag) {
+      return_value[i] = or_of_boolean_masks(
+        get_dof_mask(fe[i],
+                     fe[i],
+                     internal_couplings,
+                     [&](Coupling tag) { return tag != Coupling::none; }),
+        get_dof_mask(fe[i], fe[i], flux_couplings, [&](Coupling tag) {
           return tag != Coupling::none;
-        });
+        }));
     return return_value;
   }
 
@@ -1218,7 +1241,7 @@ namespace DoFTools
 
         // Prepare all cell dof masks for each FE
         std::vector<Table<2, bool>> Collection_of_internal_masks =
-          get_all_internal_dof_masks(fe, internal_couplings);
+          get_all_internal_dof_masks(fe, internal_couplings, flux_couplings);
 
         // Prepare face dof masks for each pair of FE's for flux couplings
         Table<2, Table<2, bool>> Collection_of_flux_masks =
