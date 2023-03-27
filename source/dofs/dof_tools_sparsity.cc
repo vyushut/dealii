@@ -801,16 +801,14 @@ namespace DoFTools
                                     true_from_coupling_predicate);
   }
 
-  // for a given FE space, find the boolean mask for dofs which are coupled by
-  // Coupling::always
+  // for a given FE space, find the boolean mask for dofs which are coupled
   template <int dim, int spacedim>
   Table<2, bool>
   get_dof_mask(const FiniteElement<dim, spacedim> &fe,
                const Table<2, Coupling> &          component_couplings)
   {
-    return get_dof_mask(fe, fe, component_couplings, [&](Coupling tag) {
-      return tag != Coupling::none;
-    });
+    return get_dof_mask(fe, fe, component_couplings,
+                        [&](Coupling tag) {return tag != Coupling::none;});
   }
 
   Table<2, bool>
@@ -831,9 +829,27 @@ namespace DoFTools
         return_table(i, j) = mask_1(i, j) || mask_2(i, j);
     return return_table;
   }
+
   // computes the boolean masks for the coupling of dofs inside each FE space in
   // a collection. Note that currently both Coupling::always and
   // Coupling::nonzero contribute to the boolean mask without distinction
+  template <int dim, int spacedim>
+  Table<2, bool>
+  get_internal_dof_mask(const FiniteElement<dim, spacedim> &fe,
+                             const Table<2, Coupling> &internal_couplings,
+                             const Table<2, Coupling> &flux_couplings)
+  {
+      // Decides how to treat Couplings:always and Couplings:nonzero.
+      return or_of_boolean_masks(
+                  get_dof_mask(fe,fe,
+                               internal_couplings,
+                               [&](Coupling tag) { return tag != Coupling::none; }),
+                  get_dof_mask(fe, fe,
+                               flux_couplings,
+                               [&](Coupling tag) { return tag != Coupling::none; })
+                               );
+  }
+
   template <int dim, int spacedim>
   std::vector<Table<2, bool>>
   get_all_internal_dof_masks(const hp::FECollection<dim, spacedim> &fe,
@@ -844,14 +860,7 @@ namespace DoFTools
     // It is the internal_couplings which is distributed to dof masks below
     std::vector<Table<2, bool>> return_value(fe.size());
     for (unsigned int i = 0; i < fe.size(); ++i)
-      return_value[i] = or_of_boolean_masks(
-        get_dof_mask(fe[i],
-                     fe[i],
-                     internal_couplings,
-                     [&](Coupling tag) { return tag != Coupling::none; }),
-        get_dof_mask(fe[i], fe[i], flux_couplings, [&](Coupling tag) {
-          return tag != Coupling::none;
-        }));
+      return_value[i] = get_internal_dof_mask(fe[i], internal_couplings, flux_couplings);
     return return_value;
   }
 
@@ -1204,7 +1213,238 @@ namespace DoFTools
             }
       }
 
-      // implementation of the same function in namespace DoFTools for
+
+        template <int dim, int spacedim, typename number>
+        void
+        non_hp_make_flux_sparsity_pattern_old_logic(const DoFHandler<dim, spacedim> &dof,
+                                                    SparsityPatternBase &sparsity,
+                                                    const AffineConstraints<number> &constraints,
+                                                    const bool keep_constrained_dofs,
+                                                    const Table<2, Coupling> &internal_couplings,
+                                                    const Table<2, Coupling> &flux_couplings,
+                                                    const types::subdomain_id subdomain_id,
+                                                    const std::function<
+                                                            bool(const typename DoFHandler<dim, spacedim>::active_cell_iterator &,
+                                                                 const unsigned int)> &face_has_flux_coupling)
+
+        {
+            const types::global_dof_index n_dofs = dof.n_dofs();
+            (void)n_dofs;
+
+            AssertDimension(sparsity.n_rows(), n_dofs);
+            AssertDimension(sparsity.n_cols(), n_dofs);
+
+            // If we have a distributed Triangulation only allow locally_owned
+            // subdomain. Not setting a subdomain is also okay, because we skip
+            // ghost cells in the loop below.
+            if (const auto *triangulation = dynamic_cast<
+                    const parallel::DistributedTriangulationBase<dim, spacedim> *>(
+                    &dof.get_triangulation()))
+            {
+                Assert((subdomain_id == numbers::invalid_subdomain_id) ||
+                       (subdomain_id == triangulation->locally_owned_subdomain()),
+                       ExcMessage(
+                               "For distributed Triangulation objects and associated "
+                               "DoFHandler objects, asking for any subdomain other than the "
+                               "locally owned one does not make sense."));
+            }
+            /////new
+            const FiniteElement<dim, spacedim> &fe     = dof.get_fe();
+
+            Table<2, bool> support_on_face = dof_activity_on_faces(fe);
+            // Convert the int_dof_mask to bool_int_dof_mask so we can pass it
+            // to constraints.add_entries_local_to_global()
+            const Table<2, Coupling> flux_dof_couplings =
+                    dof_couplings_from_component_couplings(fe, flux_couplings);
+            const Table<2, bool> internal_dof_mask =
+                    get_internal_dof_mask(fe, internal_couplings, flux_couplings);
+            /////
+
+            std::vector<types::global_dof_index> dofs_on_this_cell;
+            std::vector<types::global_dof_index> dofs_on_other_cell;
+            dofs_on_this_cell.reserve(fe.n_dofs_per_cell());
+            dofs_on_other_cell.reserve(fe.n_dofs_per_cell());
+
+            // TODO: in an old implementation, we used user flags before to tag
+            // faces that were already touched. this way, we could reduce the work
+            // a little bit. now, we instead add only data from one side. this
+            // should be OK, but we need to actually verify it.
+
+            // In case we work with a distributed sparsity pattern of Trilinos
+            // type, we only have to do the work if the current cell is owned by
+            // the calling processor. Otherwise, just continue.
+            for (const auto &cell : dof.active_cell_iterators())
+                if (((subdomain_id == numbers::invalid_subdomain_id) ||
+                     (subdomain_id == cell->subdomain_id())) &&
+                    cell->is_locally_owned())
+                {
+                    const unsigned int n_dofs_on_this_cell =
+                            cell->get_fe().n_dofs_per_cell();
+                    dofs_on_this_cell.resize(n_dofs_on_this_cell);
+                    cell->get_dof_indices(dofs_on_this_cell);
+
+                    // make sparsity pattern for this cell. if no constraints pattern
+                    // was given, then the following call acts as if simply no
+                    // constraints existed
+                    constraints.add_entries_local_to_global(dofs_on_this_cell,
+                                                            sparsity,
+                                                            keep_constrained_dofs,
+                                                            internal_dof_mask);
+
+                    for (const unsigned int face : cell->face_indices())
+                    {
+                        typename DoFHandler<dim, spacedim>::face_iterator cell_face =
+                                cell->face(face);
+                        const bool periodic_neighbor = cell->has_periodic_neighbor(face);
+                        if (!cell->at_boundary(face) || periodic_neighbor)
+                        {
+                            typename DoFHandler<dim, spacedim>::level_cell_iterator
+                                    neighbor = cell->neighbor_or_periodic_neighbor(face);
+
+                            // in 1d, we do not need to worry whether the neighbor
+                            // might have children and then loop over those children.
+                            // rather, we may as well go straight to the cell behind
+                            // this particular cell's most terminal child
+                            if (dim == 1)
+                                while (neighbor->has_children())
+                                    neighbor = neighbor->child(face == 0 ? 1 : 0);
+
+                            if (neighbor->has_children())
+                            {
+                                for (unsigned int sub_nr = 0;
+                                     sub_nr != cell_face->n_active_descendants();
+                                     ++sub_nr)
+                                {
+                                    const typename DoFHandler<dim, spacedim>::
+                                    level_cell_iterator sub_neighbor =
+                                            periodic_neighbor ?
+                                            cell->periodic_neighbor_child_on_subface(
+                                                    face, sub_nr) :
+                                            cell->neighbor_child_on_subface(face, sub_nr);
+
+                                    const unsigned int n_dofs_on_neighbor =
+                                            sub_neighbor->get_fe().n_dofs_per_cell();
+                                    dofs_on_other_cell.resize(n_dofs_on_neighbor);
+                                    sub_neighbor->get_dof_indices(dofs_on_other_cell);
+
+                                    unsigned int sub_neighbor_face_pointing_to_this_cell=numbers::invalid_unsigned_int;
+                                    for (const unsigned int sub_neighbor_face : sub_neighbor->face_indices())
+                                    {
+                                        if (sub_neighbor.neighbor(sub_neighbor_face) == cell) {
+                                            sub_neighbor_face_pointing_to_this_cell = sub_neighbor_face;
+                                            continue;
+                                        }
+                                    }
+                                    if (!face_has_flux_coupling(
+                                            sub_neighbor,
+                                            sub_neighbor_face_pointing_to_this_cell
+                                    ))
+                                        continue;
+
+                                      const Table<2, bool> cell_to_neighbor_flux_dof_mask_face_activity =
+                                              get_dof_mask_face_activity<dim>(face,
+                                                                         sub_neighbor_face_pointing_to_this_cell,
+                                                                         flux_dof_couplings,
+                                                                         support_on_face);
+                                    const Table<2, bool> neighbor_to_cell_flux_dof_mask_face_activity =
+                                              get_dof_mask_face_activity<dim>(sub_neighbor_face_pointing_to_this_cell,
+                                              face, flux_dof_couplings, support_on_face);
+
+                                    constraints.add_entries_local_to_global(
+                                            dofs_on_this_cell,
+                                            dofs_on_other_cell,
+                                            sparsity,
+                                            keep_constrained_dofs,
+                                            cell_to_neighbor_flux_dof_mask_face_activity);
+                                    constraints.add_entries_local_to_global(
+                                            dofs_on_other_cell,
+                                            dofs_on_this_cell,
+                                            sparsity,
+                                            keep_constrained_dofs,
+                                            neighbor_to_cell_flux_dof_mask_face_activity
+                                            );
+                                    // only need to add this when the neighbor is not
+                                    // owned by the current processor, otherwise we add
+                                    // the entries for the neighbor there
+                                    if (sub_neighbor->subdomain_id() !=
+                                        cell->subdomain_id())
+                                        constraints.add_entries_local_to_global(
+                                                dofs_on_other_cell,
+                                                sparsity,
+                                                keep_constrained_dofs,
+                                                internal_dof_mask);
+                                }
+                            }
+                            else
+                            {
+                                // Refinement edges are taken care of by coarser
+                                // cells
+                                if ((!periodic_neighbor &&
+                                     cell->neighbor_is_coarser(face)) ||
+                                    (periodic_neighbor &&
+                                     cell->periodic_neighbor_is_coarser(face)))
+                                    if (neighbor->subdomain_id() == cell->subdomain_id())
+                                        continue;
+                                const unsigned int neighbor_face_n =  cell->neighbor_of_neighbor(face);
+                                const unsigned int n_dofs_on_neighbor =
+                                        neighbor->get_fe().n_dofs_per_cell();
+                                if (!face_has_flux_coupling(
+                                        neighbor,
+                                        neighbor_face_n
+                                ))
+                                    continue;
+
+                                dofs_on_other_cell.resize(n_dofs_on_neighbor);
+
+                                neighbor->get_dof_indices(dofs_on_other_cell);
+
+                                const Table<2, bool> cell_to_neighbor_flux_dof_mask_face_activity =
+                                        get_dof_mask_face_activity<dim>(face,
+                                                                   neighbor_face_n, flux_dof_couplings,
+                                                                   support_on_face);
+
+                                constraints.add_entries_local_to_global(
+                                        dofs_on_this_cell,
+                                        dofs_on_other_cell,
+                                        sparsity,
+                                        keep_constrained_dofs,
+                                        cell_to_neighbor_flux_dof_mask_face_activity);
+
+                                // only need to add these in case the neighbor cell
+                                // is not locally owned - otherwise, we touch each
+                                // face twice and hence put the indices the other way
+                                // around
+                                if (!cell->neighbor_or_periodic_neighbor(face)
+                                        ->is_active() ||
+                                    (neighbor->subdomain_id() != cell->subdomain_id()))
+                                {
+                                    const Table<2, bool> neighbor_to_cell_flux_dof_mask_face_activity =
+                                            get_dof_mask_face_activity<dim>(neighbor_face_n,
+                                                                       face,
+                                                                       flux_dof_couplings,
+                                                                       support_on_face);
+                                    constraints.add_entries_local_to_global(
+                                            dofs_on_other_cell,
+                                            dofs_on_this_cell,
+                                            sparsity,
+                                            keep_constrained_dofs,
+                                            neighbor_to_cell_flux_dof_mask_face_activity
+                                            );
+                                    if (neighbor->subdomain_id() != cell->subdomain_id())
+                                        constraints.add_entries_local_to_global(
+                                                dofs_on_other_cell,
+                                                sparsity,
+                                                keep_constrained_dofs,
+                                                internal_dof_mask);
+                                }
+                            }
+                        }
+                    }
+                }
+        }
+
+
+        // implementation of the same function in namespace DoFTools for
       // hp-DoFHandlers
       template <int dim, int spacedim, typename number>
       void
@@ -1318,6 +1558,281 @@ namespace DoFTools
 
 
 
+
+  template <int dim, int spacedim, typename number>
+  void
+  hp_make_flux_sparsity_pattern_old_logic(const DoFHandler<dim, spacedim> &dof,
+                             SparsityPatternBase &            sparsity,
+                             const AffineConstraints<number> &constraints,
+                             const bool                keep_constrained_dofs,
+                             const Table<2, Coupling> &       internal_couplings,
+        const Table<2, Coupling> &       flux_couplings,
+        const types::subdomain_id        subdomain_id,
+        const std::function<
+          bool(const typename DoFHandler<dim, spacedim>::active_cell_iterator &,
+               const unsigned int)> &face_has_flux_coupling)
+ {
+      //new
+     const dealii::hp::FECollection<dim, spacedim> &fe =
+             dof.get_fe_collection();
+
+     std::vector<types::global_dof_index> dofs_on_this_cell(
+             dof.get_fe_collection().max_dofs_per_cell());
+     std::vector<types::global_dof_index> dofs_on_other_cell(
+             dof.get_fe_collection().max_dofs_per_cell());
+
+     AssertDimension(internal_couplings.size(0), fe.n_components());
+     AssertDimension(internal_couplings.size(1), fe.n_components());
+     AssertDimension(flux_couplings.size(0), fe.n_components());
+     AssertDimension(flux_couplings.size(1), fe.n_components());
+
+     // Prepare all cell dof masks for each FE
+     std::vector<Table<2, bool>> Collection_of_internal_masks =
+             get_all_internal_dof_masks(fe, internal_couplings, flux_couplings);
+
+     // Prepare face dof masks for each pair of FE's for flux couplings
+     Table<2, Table<2, bool>> Collection_of_flux_masks =
+             get_all_flux_dof_masks(fe, flux_couplings);
+
+      //old
+//    const types::global_dof_index n_dofs = dof.n_dofs();
+//    (void)n_dofs;
+//
+//    AssertDimension(sparsity.n_rows(), n_dofs);
+//    AssertDimension(sparsity.n_cols(), n_dofs);
+
+    // If we have a distributed Triangulation only allow locally_owned
+    // subdomain. Not setting a subdomain is also okay, because we skip
+    // ghost cells in the loop below.
+    if (const auto *triangulation = dynamic_cast<
+          const parallel::DistributedTriangulationBase<dim, spacedim> *>(
+          &dof.get_triangulation()))
+      {
+        Assert((subdomain_id == numbers::invalid_subdomain_id) ||
+                 (subdomain_id == triangulation->locally_owned_subdomain()),
+               ExcMessage(
+                 "For distributed Triangulation objects and associated "
+                 "DoFHandler objects, asking for any subdomain other than the "
+                 "locally owned one does not make sense."));
+      }
+
+//    std::vector<types::global_dof_index> dofs_on_this_cell;
+//    std::vector<types::global_dof_index> dofs_on_other_cell;
+//    dofs_on_this_cell.reserve(dof.get_fe_collection().max_dofs_per_cell());
+//    dofs_on_other_cell.reserve(dof.get_fe_collection().max_dofs_per_cell());
+
+    // TODO: in an old implementation, we used user flags before to tag
+    // faces that were already touched. this way, we could reduce the work
+    // a little bit. now, we instead add only data from one side. this
+    // should be OK, but we need to actually verify it.
+
+    // In case we work with a distributed sparsity pattern of Trilinos
+    // type, we only have to do the work if the current cell is owned by
+    // the calling processor. Otherwise, just continue.
+    for (const auto &cell : dof.active_cell_iterators())
+      if (((subdomain_id == numbers::invalid_subdomain_id) ||
+           (subdomain_id == cell->subdomain_id())) &&
+          cell->is_locally_owned())
+        {
+            //new
+            dofs_on_this_cell.resize(cell->get_fe().n_dofs_per_cell());
+            cell->get_dof_indices(dofs_on_this_cell);
+
+            // make sparsity pattern for this cell also taking into
+            // account the couplings due to face contributions on the same
+            // cell
+            constraints.add_entries_local_to_global(
+                    dofs_on_this_cell,
+                    sparsity,
+                    keep_constrained_dofs,
+                    Collection_of_internal_masks[cell->active_fe_index()]);
+          //old
+//          const unsigned int n_dofs_on_this_cell =
+//            cell->get_fe().n_dofs_per_cell();
+//          dofs_on_this_cell.resize(n_dofs_on_this_cell);
+//          cell->get_dof_indices(dofs_on_this_cell);
+//
+//          // make sparsity pattern for this cell. if no constraints pattern
+//          // was given, then the following call acts as if simply no
+//          // constraints existed
+//          constraints.add_entries_local_to_global(dofs_on_this_cell,
+//                                                  sparsity,
+//                                                  keep_constrained_dofs);
+
+          for (const unsigned int face : cell->face_indices())
+            {
+              typename DoFHandler<dim, spacedim>::face_iterator cell_face =
+                cell->face(face);
+              const bool periodic_neighbor = cell->has_periodic_neighbor(face);
+              if (!cell->at_boundary(face) || periodic_neighbor)
+                {
+                  typename DoFHandler<dim, spacedim>::level_cell_iterator
+                    neighbor = cell->neighbor_or_periodic_neighbor(face);
+
+                  // in 1d, we do not need to worry whether the neighbor
+                  // might have children and then loop over those children.
+                  // rather, we may as well go straight to the cell behind
+                  // this particular cell's most terminal child
+                  if (dim == 1)
+                    while (neighbor->has_children())
+                      neighbor = neighbor->child(face == 0 ? 1 : 0);
+
+                  if (neighbor->has_children())
+                    {
+                      for (unsigned int sub_nr = 0;
+                           sub_nr != cell_face->n_active_descendants();
+                           ++sub_nr)
+                        {
+
+                          const typename DoFHandler<dim, spacedim>::
+                            level_cell_iterator sub_neighbor =
+                              periodic_neighbor ?
+                                cell->periodic_neighbor_child_on_subface(
+                                  face, sub_nr) :
+                                cell->neighbor_child_on_subface(face, sub_nr);
+
+                            unsigned int sub_neighbor_face_pointing_to_this_cell=numbers::invalid_unsigned_int;
+                            for (const unsigned int sub_neighbor_face : sub_neighbor->face_indices())
+                            {
+                                if (sub_neighbor.neighbor(sub_neighbor_face) == cell) {
+                                    sub_neighbor_face_pointing_to_this_cell = sub_neighbor_face;
+                                    continue;
+                                }
+                            }
+                            if (!face_has_flux_coupling(
+                                    sub_neighbor,
+                                    sub_neighbor_face_pointing_to_this_cell
+                            ))
+                                continue;
+
+                            //new
+                            dofs_on_other_cell.resize(sub_neighbor->get_fe().n_dofs_per_cell());
+                            sub_neighbor->get_dof_indices(dofs_on_other_cell);
+                            // for a pair of cell and neighbor and their FE's,
+                            // compute two rectangular dof masks
+                            Table<2, bool> &cell_to_sub_neighbor_dof_mask =
+                                    Collection_of_flux_masks(cell->active_fe_index(),
+                                                             sub_neighbor->active_fe_index());
+                            Table<2, bool> &sub_neighbor_to_cell_dof_mask =
+                                    Collection_of_flux_masks(sub_neighbor->active_fe_index(),
+                                                             cell->active_fe_index());
+
+                            constraints.add_entries_local_to_global(
+                                    dofs_on_this_cell,
+                                    dofs_on_other_cell,
+                                    sparsity,
+                                    keep_constrained_dofs,
+                                    cell_to_sub_neighbor_dof_mask);
+                            constraints.add_entries_local_to_global(
+                                    dofs_on_other_cell,
+                                    dofs_on_this_cell,
+                                    sparsity,
+                                    keep_constrained_dofs,
+                                    sub_neighbor_to_cell_dof_mask);
+                            //old
+//                          const unsigned int n_dofs_on_neighbor =
+//                            sub_neighbor->get_fe().n_dofs_per_cell();
+//                          dofs_on_other_cell.resize(n_dofs_on_neighbor);
+//                          sub_neighbor->get_dof_indices(dofs_on_other_cell);
+//
+//                          constraints.add_entries_local_to_global(
+//                            dofs_on_this_cell,
+//                            dofs_on_other_cell,
+//                            sparsity,
+//                            keep_constrained_dofs);
+//                          constraints.add_entries_local_to_global(
+//                            dofs_on_other_cell,
+//                            dofs_on_this_cell,
+//                            sparsity,
+//                            keep_constrained_dofs);
+
+                          // only need to add this when the neighbor is not
+                          // owned by the current processor, otherwise we add
+                          // the entries for the neighbor there
+                          if (sub_neighbor->subdomain_id() !=
+                              cell->subdomain_id())
+                            constraints.add_entries_local_to_global(
+                              dofs_on_other_cell,
+                              sparsity,
+                              keep_constrained_dofs,
+                              Collection_of_internal_masks[sub_neighbor->active_fe_index()]);
+                        }
+                    }
+                  else
+                    {
+                      // Refinement edges are taken care of by coarser
+                      // cells
+                      if ((!periodic_neighbor &&
+                           cell->neighbor_is_coarser(face)) ||
+                          (periodic_neighbor &&
+                           cell->periodic_neighbor_is_coarser(face)))
+                        if (neighbor->subdomain_id() == cell->subdomain_id())
+                          continue;
+
+                        if (!face_has_flux_coupling(
+                                cell,
+                                face
+                        ))
+                            continue;
+
+                        //new
+                        dofs_on_other_cell.resize(neighbor->get_fe().n_dofs_per_cell());
+                        neighbor->get_dof_indices(dofs_on_other_cell);
+                        // for a pair of cell and neighbor and their FE's,
+                        // compute two rectangular dof masks
+                        Table<2, bool> &cell_to_neighbor_dof_mask =
+                                Collection_of_flux_masks(cell->active_fe_index(),
+                                                         neighbor->active_fe_index());
+                        constraints.add_entries_local_to_global(
+                                dofs_on_this_cell,
+                                dofs_on_other_cell,
+                                sparsity,
+                                keep_constrained_dofs,
+                                cell_to_neighbor_dof_mask);
+
+                        //old
+//                      const unsigned int n_dofs_on_neighbor =
+//                        neighbor->get_fe().n_dofs_per_cell();
+//                      dofs_on_other_cell.resize(n_dofs_on_neighbor);
+//                      neighbor->get_dof_indices(dofs_on_other_cell);
+//
+//                      constraints.add_entries_local_to_global(
+//                        dofs_on_this_cell,
+//                        dofs_on_other_cell,
+//                        sparsity,
+//                        keep_constrained_dofs);
+
+                      // only need to add these in case the neighbor cell
+                      // is not locally owned - otherwise, we touch each
+                      // face twice and hence put the indices the other way
+                      // around
+                      if (!cell->neighbor_or_periodic_neighbor(face)
+                             ->is_active() ||
+                          (neighbor->subdomain_id() != cell->subdomain_id()))
+                        {
+                          constraints.add_entries_local_to_global(
+                            dofs_on_other_cell,
+                            dofs_on_this_cell,
+                            sparsity,
+                            keep_constrained_dofs,
+                            Collection_of_flux_masks(neighbor->active_fe_index(),
+                                                     cell->active_fe_index())
+                                                     );
+                          if (neighbor->subdomain_id() != cell->subdomain_id())
+                            constraints.add_entries_local_to_global(
+                              dofs_on_other_cell,
+                              sparsity,
+                              keep_constrained_dofs,
+                              Collection_of_internal_masks[neighbor->active_fe_index()]);
+                        }
+                    }
+                }
+            }
+        }
+  }
+
+
+
   template <int dim, int spacedim>
   void
   make_flux_sparsity_pattern(const DoFHandler<dim, spacedim> &dof,
@@ -1397,7 +1912,7 @@ namespace DoFTools
         "face is empty."));
 
     if (dof.has_hp_capabilities() == false)
-      internal::non_hp_make_flux_sparsity_pattern(dof,
+      internal::non_hp_make_flux_sparsity_pattern_old_logic(dof,
                                                   sparsity,
                                                   constraints,
                                                   keep_constrained_dofs,
@@ -1406,7 +1921,7 @@ namespace DoFTools
                                                   subdomain_id,
                                                   face_has_flux_coupling);
     else
-      internal::hp_make_flux_sparsity_pattern(dof,
+      internal::hp_make_flux_sparsity_pattern_old_logic(dof,
                                               sparsity,
                                               constraints,
                                               keep_constrained_dofs,
