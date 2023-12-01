@@ -2742,16 +2742,36 @@ namespace parallel
     DEAL_II_CXX20_REQUIRES((concepts::is_valid_dim_spacedim<dim, spacedim>))
     bool Triangulation<dim, spacedim>::prepare_coarsening_and_refinement()
     {
-      // First exchange coarsen/refinement flags on ghost cells. After this
-      // collective communication call all flags on ghost cells match the
-      // flags set by the user on the owning rank.
-      exchange_refinement_flags(*this);
+        bool any_changes= true;
+        unsigned int loop_counter = 0;
+        do
+        {
+            exchange_refinement_flags(*this);
+            // Now we can call the sequential version to apply mesh smoothing and
+            // other modifications:
+            any_changes = this->dealii::Triangulation<dim, spacedim>::
+                    prepare_coarsening_and_refinement();
+            ++loop_counter;
+            AssertThrow(
+                    loop_counter < 32,
+                    ExcMessage(
+                            "Infinite loop in "
+                            "parallel::distributed::Triangulation::prepare_coarsening_and_refinement() "
+                            "for periodic boundaries detected. Aborting."));
+        }
+        while (any_changes);
+        return (loop_counter>1);
 
-      // Now we can call the sequential version to apply mesh smoothing and
-      // other modifications:
-      const bool any_changes = this->dealii::Triangulation<dim, spacedim>::
-                                 prepare_coarsening_and_refinement();
-      return any_changes;
+//      // First exchange coarsen/refinement flags on ghost cells. After this
+//      // collective communication call all flags on ghost cells match the
+//      // flags set by the user on the owning rank.
+//      exchange_refinement_flags(*this);
+//
+//      // Now we can call the sequential version to apply mesh smoothing and
+//      // other modifications:
+//      const bool any_changes = this->dealii::Triangulation<dim, spacedim>::
+//                                 prepare_coarsening_and_refinement();
+//      return any_changes;
     }
 
 
