@@ -2742,16 +2742,21 @@ namespace parallel
     DEAL_II_CXX20_REQUIRES((concepts::is_valid_dim_spacedim<dim, spacedim>))
     bool Triangulation<dim, spacedim>::prepare_coarsening_and_refinement()
     {
-        bool any_changes= true;
+        int world_rank;
+            MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+        bool global_any_changes= true;
         unsigned int loop_counter = 0;
         do
         {
+             ++loop_counter;
             exchange_refinement_flags(*this);
+            MPI_Barrier(MPI_COMM_WORLD);
             // Now we can call the sequential version to apply mesh smoothing and
             // other modifications:
+            bool any_changes;
             any_changes = this->dealii::Triangulation<dim, spacedim>::
                     prepare_coarsening_and_refinement();
-            ++loop_counter;
+            MPI_Allreduce(&any_changes, &global_any_changes,1,MPI_C_BOOL,MPI_LOR,MPI_COMM_WORLD);
             AssertThrow(
                     loop_counter < 32,
                     ExcMessage(
@@ -2759,7 +2764,8 @@ namespace parallel
                             "parallel::distributed::Triangulation::prepare_coarsening_and_refinement() "
                             "for periodic boundaries detected. Aborting."));
         }
-        while (any_changes);
+        while (global_any_changes);
+
         return (loop_counter>1);
 
 //      // First exchange coarsen/refinement flags on ghost cells. After this
