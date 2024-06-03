@@ -1,0 +1,15 @@
+Number of active cells: 16384
+Number of degrees of freedom: 16641
+
+Time step 1 at t=0.015625
+   u-equation: 8 CG iterations.
+   v-equation: 22 CG iterations.
+   Total energy: 1.17887
+Time step 2 at t=0.03125
+   u-equation: 8 CG iterations.
+   v-equation: 20 CG iterations.
+   Total energy: 2.9655
+Time step 3 at t=0.046875
+   u-equation: 8 CG iterations.
+   v-equation: 21 CG iterations.
+   Total energy: 4.33761

@@ -1,0 +1,9 @@
+473c473
+<     for (; time <= 5; time += time_step, ++timestep_number)
+---
+>     for (; time <= 0.05; time += time_step, ++timestep_number)
+538c538
+<         output_results();
+---
+>       //output_results();
+
