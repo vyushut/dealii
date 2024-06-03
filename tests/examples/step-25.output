@@ -1,0 +1,21 @@
+   Number of active cells: 64
+   Total number of cells: 127
+   Number of degrees of freedom: 65
+
+Time step #1; advancing to t = -5.28515.
+    7+10+12 CG iterations per nonlinear step.
+
+Time step #2; advancing to t = -5.1289.
+    7+10+11 CG iterations per nonlinear step.
+
+Time step #3; advancing to t = -4.97265.
+    7+9+11 CG iterations per nonlinear step.
+
+Time step #4; advancing to t = -4.8164.
+    7+9+10 CG iterations per nonlinear step.
+
+Time step #5; advancing to t = -4.66015.
+    7+9+10 CG iterations per nonlinear step.
+
+Time step #6; advancing to t = -4.5039.
+    7+9+10 CG iterations per nonlinear step.
