@@ -1,0 +1,15 @@
+Number of active cells: 81920
+Number of degrees of freedom: 82177
+
+
+time_step 1 @ t=0.00318473
+   p-equation: 9 CG iterations.
+   v-equation: 30 CG iterations.
+
+time_step 2 @ t=0.00636946
+   p-equation: 9 CG iterations.
+   v-equation: 34 CG iterations.
+
+time_step 3 @ t=0.00955419
+   p-equation: 9 CG iterations.
+   v-equation: 38 CG iterations.
