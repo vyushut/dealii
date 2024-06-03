@@ -1,0 +1,9 @@
+1022c1022
+<     for (unsigned int refinement_cycle = 0; refinement_cycle < 6;
+---
+>     for (unsigned int refinement_cycle = 0; refinement_cycle < 3;
+1038c1038
+<         output_results(refinement_cycle);
+---
+>       //output_results(refinement_cycle);
+
