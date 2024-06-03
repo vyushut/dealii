@@ -1,0 +1,78 @@
+Cycle 0:
+   Numbers of active cells:       1156 1156 
+   Numbers of degrees of freedom: 4761 4761 
+
+Iter number: 1 k_eff=319.375676634310 flux_ratio=6.836246075630 max_thermal=1.433899030144
+Iter number: 2 k_eff=0.834072546055 flux_ratio=5.204601882147 max_thermal=0.004630925876
+Iter number: 3 k_eff=0.862826188043 flux_ratio=4.645051765986 max_thermal=0.005380396338
+Iter number: 4 k_eff=0.877887920967 flux_ratio=4.318030683876 max_thermal=0.006005512201
+Iter number: 5 k_eff=0.887161559547 flux_ratio=4.256596788174 max_thermal=0.006639443035
+Iter number: 6 k_eff=0.893254525197 flux_ratio=4.296498905676 max_thermal=0.007161016401
+Iter number: 7 k_eff=0.897386466621 flux_ratio=4.323736110066 max_thermal=0.007541125053
+Iter number: 8 k_eff=0.900235644733 flux_ratio=4.342491852395 max_thermal=0.007813654241
+Iter number: 9 k_eff=0.902217719823 flux_ratio=4.355367629621 max_thermal=0.008007335384
+Iter number:10 k_eff=0.903602785157 flux_ratio=4.364212965582 max_thermal=0.008144201718
+Iter number:11 k_eff=0.904572678811 flux_ratio=4.370302672219 max_thermal=0.008240563668
+Iter number:12 k_eff=0.905252379018 flux_ratio=4.374506018233 max_thermal=0.008308245052
+Iter number:13 k_eff=0.905728767660 flux_ratio=4.377414535866 max_thermal=0.008355707257
+Iter number:14 k_eff=0.906062594755 flux_ratio=4.379431495993 max_thermal=0.008388956163
+Iter number:15 k_eff=0.906296449777 flux_ratio=4.380832749068 max_thermal=0.008412232394
+Iter number:16 k_eff=0.906460217413 flux_ratio=4.381807689696 max_thermal=0.008428519956
+Iter number:17 k_eff=0.906574868174 flux_ratio=4.382486812298 max_thermal=0.008439913928
+Iter number:18 k_eff=0.906655112098 flux_ratio=4.382960306181 max_thermal=0.008447883119
+Iter number:19 k_eff=0.906711262646 flux_ratio=4.383290664908 max_thermal=0.008453456292
+Iter number:20 k_eff=0.906750547146 flux_ratio=4.383521281425 max_thermal=0.008457353551
+Iter number:21 k_eff=0.906778027984 flux_ratio=4.383682335661 max_thermal=0.008460078740
+Iter number:22 k_eff=0.906797249757 flux_ratio=4.383794844805 max_thermal=0.008461984300
+Iter number:23 k_eff=0.906810693563 flux_ratio=4.383873459628 max_thermal=0.008463316724
+Iter number:24 k_eff=0.906820095658 flux_ratio=4.383928400683 max_thermal=0.008464248386
+Iter number:25 k_eff=0.906826670830 flux_ratio=4.383966802042 max_thermal=0.008464899825
+Iter number:26 k_eff=0.906831268888 flux_ratio=4.383993645533 max_thermal=0.008465355326
+Iter number:27 k_eff=0.906834484255 flux_ratio=4.384012411177 max_thermal=0.008465673822
+Iter number:28 k_eff=0.906836732678 flux_ratio=4.384025530522 max_thermal=0.008465896521
+Iter number:29 k_eff=0.906838304919 flux_ratio=4.384034702834 max_thermal=0.008466052239
+Iter number:30 k_eff=0.906839404318 flux_ratio=4.384041115801 max_thermal=0.008466161120
+Iter number:31 k_eff=0.906840173074 flux_ratio=4.384045599637 max_thermal=0.008466237253
+Iter number:32 k_eff=0.906840710623 flux_ratio=4.384048734710 max_thermal=0.008466290487
+Iter number:33 k_eff=0.906841086501 flux_ratio=4.384050926767 max_thermal=0.008466327710
+Iter number:34 k_eff=0.906841349329 flux_ratio=4.384052459477 max_thermal=0.008466353737
+Iter number:35 k_eff=0.906841533109 flux_ratio=4.384053531173 max_thermal=0.008466371936
+Iter number:36 k_eff=0.906841661615 flux_ratio=4.384054280525 max_thermal=0.008466384662
+Iter number:37 k_eff=0.906841751471 flux_ratio=4.384054804489 max_thermal=0.008466393560
+Iter number:38 k_eff=0.906841814301 flux_ratio=4.384055170859 max_thermal=0.008466399781
+Iter number:39 k_eff=0.906841858234 flux_ratio=4.384055427035 max_thermal=0.008466404132
+Iter number:40 k_eff=0.906841888954 flux_ratio=4.384055606160 max_thermal=0.008466407174
+Iter number:41 k_eff=0.906841910434 flux_ratio=4.384055731410 max_thermal=0.008466409301
+Iter number:42 k_eff=0.906841925454 flux_ratio=4.384055818988 max_thermal=0.008466410788
+Iter number:43 k_eff=0.906841935956 flux_ratio=4.384055880225 max_thermal=0.008466411828
+Iter number:44 k_eff=0.906841943300 flux_ratio=4.384055923044 max_thermal=0.008466412555
+Iter number:45 k_eff=0.906841948435 flux_ratio=4.384055952985 max_thermal=0.008466413064
+Iter number:46 k_eff=0.906841952025 flux_ratio=4.384055973920 max_thermal=0.008466413419
+Iter number:47 k_eff=0.906841954536 flux_ratio=4.384055988558 max_thermal=0.008466413668
+Iter number:48 k_eff=0.906841956291 flux_ratio=4.384055998794 max_thermal=0.008466413842
+Iter number:49 k_eff=0.906841957519 flux_ratio=4.384056005952 max_thermal=0.008466413963
+Iter number:50 k_eff=0.906841958377 flux_ratio=4.384056010956 max_thermal=0.008466414048
+Iter number:51 k_eff=0.906841958977 flux_ratio=4.384056014456 max_thermal=0.008466414108
+Iter number:52 k_eff=0.906841959397 flux_ratio=4.384056016902 max_thermal=0.008466414149
+Iter number:53 k_eff=0.906841959690 flux_ratio=4.384056018613 max_thermal=0.008466414178
+Iter number:54 k_eff=0.906841959895 flux_ratio=4.384056019810 max_thermal=0.008466414199
+Iter number:55 k_eff=0.906841960039 flux_ratio=4.384056020646 max_thermal=0.008466414213
+Iter number:56 k_eff=0.906841960139 flux_ratio=4.384056021231 max_thermal=0.008466414223
+Iter number:57 k_eff=0.906841960209 flux_ratio=4.384056021640 max_thermal=0.008466414230
+Iter number:58 k_eff=0.906841960258 flux_ratio=4.384056021926 max_thermal=0.008466414235
+Iter number:59 k_eff=0.906841960292 flux_ratio=4.384056022127 max_thermal=0.008466414238
+Iter number:60 k_eff=0.906841960316 flux_ratio=4.384056022267 max_thermal=0.008466414240
+Iter number:61 k_eff=0.906841960333 flux_ratio=4.384056022365 max_thermal=0.008466414242
+Iter number:62 k_eff=0.906841960345 flux_ratio=4.384056022433 max_thermal=0.008466414243
+Iter number:63 k_eff=0.906841960353 flux_ratio=4.384056022481 max_thermal=0.008466414244
+Iter number:64 k_eff=0.906841960359 flux_ratio=4.384056022514 max_thermal=0.008466414245
+Iter number:65 k_eff=0.906841960363 flux_ratio=4.384056022538 max_thermal=0.008466414245
+Iter number:66 k_eff=0.906841960366 flux_ratio=4.384056022553 max_thermal=0.008466414245
+Iter number:67 k_eff=0.906841960368 flux_ratio=4.384056022564 max_thermal=0.008466414246
+Iter number:68 k_eff=0.906841960369 flux_ratio=4.384056022573 max_thermal=0.008466414246
+Iter number:69 k_eff=0.906841960370 flux_ratio=4.384056022578 max_thermal=0.008466414246
+Iter number:70 k_eff=0.906841960371 flux_ratio=4.384056022583 max_thermal=0.008466414246
+
+   Cycle=0, n_dofs=9522,  k_eff=0.906841960371, time=380.881378000000
+
+

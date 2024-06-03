@@ -1,0 +1,14 @@
+1584c1584
+<     for (unsigned int cycle = 0; cycle < parameters.n_refinement_cycles;
+---
+>     for (unsigned int cycle = 0; cycle < 1;
+1671,1672c1671,1672
+<         for (unsigned int group = 0; group < parameters.n_groups; ++group)
+<           energy_groups[group]->output_results(cycle);
+---
+>       //for (unsigned int group = 0; group < parameters.n_groups; ++group)
+>       //  energy_groups[group]->output_results(cycle);
+1717c1717
+<         filename = "project.prm";
+---
+>         filename = "../../../source/step-28/project.prm";
